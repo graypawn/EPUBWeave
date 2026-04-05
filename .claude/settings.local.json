@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(where python:*)",
+      "Bash(python3 -m pip install ebooklib)",
+      "Bash(python -m pip --version)",
+      "Bash(python -m pip install ebooklib)",
+      "Bash(python test_prepare.py --text \"test/nangseongihwandam - oejeon - nangseon.txt\" --image \"test/1774952585671-019d436a-23d7-7528-9eca-42014b \\(1\\).png\" -n 13 --output book)",
+      "Bash(python main.py --input book --output result.epub)"
+    ]
+  }
+}
