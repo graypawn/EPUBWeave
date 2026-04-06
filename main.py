@@ -8,7 +8,22 @@ import re
 import sys
 import uuid
 
+from collections import OrderedDict
+
 from ebooklib import epub
+from PIL import Image
+
+
+class _SvgCoverHtml(epub.EpubCoverHtml):
+    """Cover page that renders the cover image via SVG for proper aspect-ratio scaling."""
+
+    def __init__(self, svg_content, **kwargs):
+        super().__init__(**kwargs)
+        self.content = svg_content
+        self.is_linear = True
+
+    def get_content(self):
+        return self.content
 
 DEFAULT_CSS = """\
 body {
@@ -75,6 +90,30 @@ MEDIA_TYPES = {
     ".svg": "image/svg+xml",
     ".webp": "image/webp",
 }
+
+
+def _svg_cover_html(cover_filename, width, height):
+    return f"""\
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title>Cover</title>
+    <style type="text/css">
+      @page {{ padding: 0pt; margin: 0pt }}
+      body {{ text-align: center; padding: 0pt; margin: 0pt; }}
+    </style>
+  </head>
+  <body>
+    <div>
+      <svg version="1.1" xmlns="http://www.w3.org/2000/svg"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           width="100%" height="100%" viewBox="0 0 {width} {height}"
+           preserveAspectRatio="xMidYMid meet">
+        <image width="{width}" height="{height}" xlink:href="{cover_filename}"/>
+      </svg>
+    </div>
+  </body>
+</html>"""
 
 
 def guess_media_type(filename):
@@ -173,12 +212,17 @@ def build_epub(input_dir, output_path):
         cover_path = os.path.join(input_dir, "images", cover_filename)
         if os.path.exists(cover_path):
             with open(cover_path, "rb") as f:
-                book.set_cover("images/" + cover_filename, f.read())
-            # ebooklib sets cover page as linear=False by default; fix it
-            for item in book.items:
-                if isinstance(item, epub.EpubCoverHtml):
-                    item.is_linear = True
-                    break
+                cover_data = f.read()
+            # Add cover image without the default (non-SVG) cover HTML
+            book.set_cover("images/" + cover_filename, cover_data, create_page=False)
+            # Add SVG-based cover page
+            with Image.open(cover_path) as img:
+                width, height = img.size
+            cover_page = _SvgCoverHtml(
+                svg_content=_svg_cover_html(cover_filename, width, height),
+                image_name="images/" + cover_filename,
+            )
+            book.add_item(cover_page)
         else:
             print(f"Warning: cover image '{cover_path}' not found", file=sys.stderr)
 
