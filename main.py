@@ -163,6 +163,10 @@ def build_epub(input_dir, output_path):
     )
     book.add_item(css_item)
 
+    # Tags
+    for tag in meta.get("tags", []):
+        book.add_metadata("DC", "subject", tag.strip())
+
     # Cover image
     cover_filename = meta.get("cover")
     if cover_filename:
@@ -170,6 +174,11 @@ def build_epub(input_dir, output_path):
         if os.path.exists(cover_path):
             with open(cover_path, "rb") as f:
                 book.set_cover("images/" + cover_filename, f.read())
+            # ebooklib sets cover page as linear=False by default; fix it
+            for item in book.items:
+                if isinstance(item, epub.EpubCoverHtml):
+                    item.is_linear = True
+                    break
         else:
             print(f"Warning: cover image '{cover_path}' not found", file=sys.stderr)
 
@@ -222,7 +231,8 @@ def build_epub(input_dir, output_path):
 
     # TOC and spine
     book.toc = tuple(chapter_items)
-    book.spine = ["nav"] + chapter_items
+    spine_start = ["cover", "nav"] if cover_filename else ["nav"]
+    book.spine = spine_start + chapter_items
 
     # Navigation
     book.add_item(epub.EpubNcx())
