@@ -122,18 +122,18 @@ Common error messages:
 - **Processing:**
   - GIF: always copied as-is (no resizing)
   - PNG/JPEG: resized if `--max-size` set (PNG/JPEG only)
-  - PNG: converted to JPEG if `--compress` set (only if opaque, no alpha)
-  - Transparent PNG: preserved as PNG if `--compress` set
+  - PNG: converted to JPEG if `--compress` set (only if visually opaque, alpha min ≥ 250)
+  - Transparent PNG (alpha min < 250): preserved as PNG if `--compress` set
   - Other formats: copied as-is
 - **Original files:** never modified (processing in temp directory)
-- **Transparency:** RGBA/LA channels and palette transparency preserved
+- **Transparency:** RGBA/LA channels and palette transparency preserved; alpha ≥ 250 treated as opaque
 - **Max-size:** longest edge capped at value; aspect ratio maintained
 
 ## Option Semantics
 
 ### `--compress`
 
-- **For PNG:** Opaque PNG (no alpha) → JPEG (quality=85); Transparent PNG → PNG (lossless optimize)
+- **For PNG:** Visually opaque PNG (alpha min ≥ 250) → JPEG (quality=85); Transparent PNG (alpha min < 250) → PNG (lossless optimize)
 - **For JPEG:** (no effect; JPEG already compressed)
 - **For GIF:** (no effect; copied as-is)
 - **Result:** Image filenames may change (e.g., `photo.png` → `photo.jpg`)

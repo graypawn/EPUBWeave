@@ -116,11 +116,11 @@ def _svg_cover_html(cover_filename, width, height):
 </html>"""
 
 
-def _has_transparency(img):
-    """Return True if PIL image has any transparent pixels."""
+def _has_transparency(img, threshold=250):
+    """Return True if PIL image has visually meaningful transparent pixels."""
     if img.mode in ("RGBA", "LA"):
         alpha_channel = img.mode.index("A")
-        return img.getextrema()[alpha_channel][0] < 255
+        return img.getextrema()[alpha_channel][0] < threshold
     if img.mode == "P":
         return "transparency" in img.info
     return False
