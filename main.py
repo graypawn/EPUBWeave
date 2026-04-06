@@ -25,62 +25,10 @@ class _SvgCoverHtml(epub.EpubCoverHtml):
     def get_content(self):
         return self.content
 
-DEFAULT_CSS = """\
-body {
-    font-family: serif;
-    line-height: 1.8;
-    margin: 1em;
-    padding: 0;
-    color: #222;
-    background-color: #fff;
-}
-
-h1, h2, h3, h4, h5, h6 {
-    font-family: sans-serif;
-    line-height: 1.3;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-}
-
-h1 { font-size: 1.6em; text-align: center; margin-top: 2em; }
-h2 { font-size: 1.3em; }
-h3 { font-size: 1.1em; }
-
-p {
-    margin: 0.5em 0;
-    text-indent: 1em;
-    text-align: justify;
-}
-
-img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 1em auto;
-}
-
-blockquote {
-    margin: 1em 2em;
-    padding-left: 1em;
-    border-left: 3px solid #ccc;
-    font-style: italic;
-}
-
-table {
-    border-collapse: collapse;
-    margin: 1em auto;
-}
-
-td, th {
-    border: 1px solid #999;
-    padding: 0.4em 0.8em;
-}
-
-a {
-    color: #336;
-    text-decoration: underline;
-}
-"""
+def _load_default_css():
+    css_path = os.path.join(os.path.dirname(__file__), "static", "default.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 MEDIA_TYPES = {
     ".jpg": "image/jpeg",
@@ -267,7 +215,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     book.add_author(meta["author"])
 
     # CSS
-    css_content = DEFAULT_CSS
+    css_content = _load_default_css()
     style_css_path = os.path.join(input_dir, "style.css")
     if os.path.exists(style_css_path):
         with open(style_css_path, "r", encoding="utf-8") as f:

@@ -1,0 +1,101 @@
+/* 기본 */
+
+p {
+  text-indent : 0.5em;
+  text-align : justify;
+  line-height : 1.5em;
+  margin : 12px auto;
+  word-wrap: break-word;
+}
+
+/* .none: 숨김 요소 - 크롤러 잔여물 등 비표시 대상 (hidden elements) */
+.none {
+  display: none;
+}
+
+h1 {
+  margin-top : 40%;
+  text-align: center;
+}
+
+h2 {
+  font-size: 0.875em;
+  line-height: 1.2;
+  margin: 7% 0 10% 5%;
+  padding: 15px 3px 15px 9px;
+  border-left: 5px solid;
+}
+
+/* .no: 회차 번호 (episode number) */
+.no {
+  color: #EA5A4F;
+  line-height: 1.5em;
+  text-align: left;
+}
+
+h3 {
+  font-size: 1.1em;
+  margin-bottom : 4%;
+}
+
+/* .separator: 장면 구분 기호 - "* * *" 등 (scene separator mark) */
+.separator {
+  font-weight: bold;
+  text-align: center;
+  margin: 1em auto;
+}
+
+hr {
+  border: dashed 2px;
+  margin: 2em 15%;
+}
+
+/* hr.l1, hr.l2: 장면 전환선 - 얇은/굵은 변형 (scene break lines) */
+hr.l1 {
+  border: 1px solid;
+  margin: 0 10% 0 0;
+}
+
+hr.l2 {
+  border: 2px solid;
+  margin: 0 10% 0 0;
+}
+
+/* .intro: 작품 소개/시놉시스 블록 (synopsis block) */
+.intro {
+  font-size: 83%;
+  line-height: 1.5em;
+  border-left: 3px solid #aaa;
+  color: #555;
+  margin: 0.25em;
+  margin-top: 1em;
+  padding: 0.5em 1em 0.5em 1em;
+  display: inline-block;
+  font-family: sans-serif;
+  text-align: left;
+}
+
+/* .ibox: 작중 삽입 텍스트 박스 - 편지, 메시지, 시스템 창 등 (in-story info box) */
+.ibox {
+  border: 1px solid #797979;
+  text-align: justify;
+  padding: 5px 5px 5px 5px;
+  margin: 0 0.1em 0 0.1em;
+  margin-top: 0.1em;
+  margin-bottom: 0.1em;
+}
+
+.ibox p {
+  color: #333333;
+  font-size: 0.85em;
+  font-style: normal;
+  line-height: 1.8em;
+  margin: 0 0 0 0;
+  padding: 0 0 0 0;
+  text-align: left;
+  text-indent: 0.8em;
+}
+
+img {
+  max-width : 100%;
+}
