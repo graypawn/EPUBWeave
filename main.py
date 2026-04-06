@@ -126,11 +126,6 @@ def _has_transparency(img):
     return False
 
 
-def _is_animated_gif(image_path):
-    with Image.open(image_path) as img:
-        return hasattr(img, "n_frames") and img.n_frames > 1
-
-
 def _resize_image(img, max_size):
     w, h = img.size
     if w > max_size or h > max_size:

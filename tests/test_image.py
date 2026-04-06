@@ -9,7 +9,6 @@ from PIL import Image
 
 from main import (
     _has_transparency,
-    _is_animated_gif,
     _resize_image,
     _optimize_image,
 )
@@ -82,24 +81,6 @@ class TestHasTransparency:
         img = Image.new("L", (10, 10), 128)
         assert _has_transparency(img) is False
 
-
-# --- _is_animated_gif ---
-
-class TestIsAnimatedGif:
-    def test_static_gif(self, tmp_dir):
-        path = os.path.join(tmp_dir, "static.gif")
-        _make_gif(path, frames=1)
-        assert _is_animated_gif(path) is False
-
-    def test_animated_gif(self, tmp_dir):
-        path = os.path.join(tmp_dir, "animated.gif")
-        _make_gif(path, frames=3)
-        assert _is_animated_gif(path) is True
-
-    def test_png_not_animated(self, tmp_dir):
-        path = os.path.join(tmp_dir, "image.png")
-        _make_png(path)
-        assert _is_animated_gif(path) is False
 
 
 # --- _resize_image ---
