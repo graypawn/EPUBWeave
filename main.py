@@ -202,8 +202,20 @@ def build_epub(input_dir, output_path):
             book.add_item(img_item)
 
     # Chapters
-    chapter_items = []
-    for i, ch in enumerate(meta["chapters"]):
+    chapter_items = []   # all EpubHtml items (for spine)
+    toc_entries = []     # TOC: EpubHtml or (Section, [EpubHtml, ...])
+    chap_index = 0
+
+    current_section = None   # (Section, [chapters]) being built
+    for ch in meta["chapters"]:
+        if "file" not in ch:
+            # Section header (level item)
+            if current_section is not None:
+                toc_entries.append(tuple(current_section))
+            current_section = [epub.Section(ch["title"]), []]
+            continue
+
+        chap_index += 1
         body_path = os.path.join(input_dir, "chapters", ch["file"])
         if not os.path.exists(body_path):
             print(f"Error: chapter file '{body_path}' not found", file=sys.stderr)
@@ -221,7 +233,7 @@ def build_epub(input_dir, output_path):
 
         chapter = epub.EpubHtml(
             title=ch["title"],
-            file_name=f"chapter_{i + 1:04d}.xhtml",
+            file_name=f"chapter_{chap_index:04d}.xhtml",
             lang=meta["language"],
         )
         chapter.set_content(body_content)
@@ -229,8 +241,16 @@ def build_epub(input_dir, output_path):
         book.add_item(chapter)
         chapter_items.append(chapter)
 
+        if current_section is not None:
+            current_section[1].append(chapter)
+        else:
+            toc_entries.append(chapter)
+
+    if current_section is not None:
+        toc_entries.append(tuple(current_section))
+
     # TOC and spine
-    book.toc = tuple(chapter_items)
+    book.toc = tuple(toc_entries)
     spine_start = ["cover", "nav"] if cover_filename else ["nav"]
     book.spine = spine_start + chapter_items
 
