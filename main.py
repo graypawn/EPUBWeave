@@ -5,7 +5,9 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import uuid
 
 from ebooklib import epub
@@ -114,6 +116,42 @@ def _svg_cover_html(cover_filename, width, height):
 </html>"""
 
 
+def _has_transparency(img):
+    """Return True if PIL image has any transparent pixels."""
+    if img.mode in ("RGBA", "LA"):
+        alpha_channel = img.mode.index("A")
+        return img.getextrema()[alpha_channel][0] < 255
+    if img.mode == "P":
+        return "transparency" in img.info
+    return False
+
+
+def _optimize_image(input_path, output_dir):
+    """Optimize a single image for EPUB. Returns output filename.
+
+    PNG without transparency → JPEG (quality=85)
+    PNG with transparency    → PNG (lossless optimize)
+    Everything else          → copy as-is
+    """
+    filename = os.path.basename(input_path)
+    name, ext = os.path.splitext(filename)
+
+    if ext.lower() != ".png":
+        shutil.copy2(input_path, os.path.join(output_dir, filename))
+        return filename
+
+    with Image.open(input_path) as img:
+        if _has_transparency(img):
+            img.save(os.path.join(output_dir, filename), "PNG", optimize=True)
+            return filename
+        else:
+            out_name = name + ".jpg"
+            img.convert("RGB").save(
+                os.path.join(output_dir, out_name), "JPEG", quality=85
+            )
+            return out_name
+
+
 def guess_media_type(filename):
     ext = os.path.splitext(filename)[1].lower()
     return MEDIA_TYPES.get(ext, "application/octet-stream")
@@ -164,7 +202,20 @@ def rewrite_image_src(html_content):
     return re.sub(r'src="([^"/]+)"', r'src="images/\1"', html_content)
 
 
-def build_epub(input_dir, output_path):
+def _apply_img_renames(html_content, rename_map):
+    """Replace image src filenames according to rename_map (e.g. photo.png → photo.jpg)."""
+    if not rename_map:
+        return html_content
+
+    def replacer(m):
+        old = m.group(1)
+        new = rename_map.get(old, old)
+        return f'src="images/{new}"'
+
+    return re.sub(r'src="images/([^"]+)"', replacer, html_content)
+
+
+def build_epub(input_dir, output_path, optimize_images=False):
     book_json_path = os.path.join(input_dir, "book.json")
     if not os.path.exists(book_json_path):
         print(f"Error: {book_json_path} not found", file=sys.stderr)
@@ -226,11 +277,13 @@ def build_epub(input_dir, output_path):
 
     # All images (excluding cover)
     images_dir = os.path.join(input_dir, "images")
-    if os.path.isdir(images_dir):
-        for img_name in os.listdir(images_dir):
+    img_rename_map = {}  # old_name -> new_name (PNG → JPEG 변환 시)
+
+    def _add_images(src_dir):
+        for img_name in os.listdir(src_dir):
             if img_name == cover_filename:
                 continue
-            img_path = os.path.join(images_dir, img_name)
+            img_path = os.path.join(src_dir, img_name)
             if not os.path.isfile(img_path):
                 continue
             with open(img_path, "rb") as f:
@@ -242,6 +295,20 @@ def build_epub(input_dir, output_path):
                 content=img_data,
             )
             book.add_item(img_item)
+
+    if os.path.isdir(images_dir):
+        if optimize_images:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                for img_name in os.listdir(images_dir):
+                    img_path = os.path.join(images_dir, img_name)
+                    if not os.path.isfile(img_path):
+                        continue
+                    new_name = _optimize_image(img_path, tmp_dir)
+                    if new_name != img_name:
+                        img_rename_map[img_name] = new_name
+                _add_images(tmp_dir)
+        else:
+            _add_images(images_dir)
 
     # Chapters
     chapter_items = []   # all EpubHtml items (for spine)
@@ -272,6 +339,7 @@ def build_epub(input_dir, output_path):
             body_content = raw
 
         body_content = rewrite_image_src(body_content)
+        body_content = _apply_img_renames(body_content, img_rename_map)
 
         chapter = epub.EpubHtml(
             title=ch["title"],
@@ -310,8 +378,13 @@ def main():
     parser = argparse.ArgumentParser(description="Build EPUB from book directory")
     parser.add_argument("--input", required=True, help="Path to book directory")
     parser.add_argument("--output", required=True, help="Output EPUB file path")
+    parser.add_argument(
+        "--optimize-images",
+        action="store_true",
+        help="Optimize images: convert opaque PNG to JPEG, compress transparent PNG",
+    )
     args = parser.parse_args()
-    build_epub(args.input, args.output)
+    build_epub(args.input, args.output, optimize_images=args.optimize_images)
 
 
 if __name__ == "__main__":
