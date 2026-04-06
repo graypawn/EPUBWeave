@@ -126,30 +126,65 @@ def _has_transparency(img):
     return False
 
 
-def _optimize_image(input_path, output_dir):
-    """Optimize a single image for EPUB. Returns output filename.
+def _is_animated_gif(image_path):
+    with Image.open(image_path) as img:
+        return hasattr(img, "n_frames") and img.n_frames > 1
 
-    PNG without transparency → JPEG (quality=85)
-    PNG with transparency    → PNG (lossless optimize)
+
+def _resize_image(img, max_size):
+    w, h = img.size
+    if w > max_size or h > max_size:
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    return img
+
+
+def _optimize_image(input_path, output_dir, compress=False, max_size=None):
+    """Process a single image for EPUB. Returns output filename.
+
+    Resize (PNG/JPEG only, if max_size set) → format conversion (if compress set)
+    GIF → copy as-is always
+    PNG without transparency → JPEG (quality=85) if compress
+    PNG with transparency    → PNG (lossless optimize) if compress
+    JPEG                     → save if resized, else copy as-is
     Everything else          → copy as-is
     """
     filename = os.path.basename(input_path)
     name, ext = os.path.splitext(filename)
+    ext_lower = ext.lower()
 
-    if ext.lower() != ".png":
+    if ext_lower == ".gif":
         shutil.copy2(input_path, os.path.join(output_dir, filename))
         return filename
 
     with Image.open(input_path) as img:
-        if _has_transparency(img):
-            img.save(os.path.join(output_dir, filename), "PNG", optimize=True)
+        resized = False
+        if max_size and ext_lower in (".png", ".jpg", ".jpeg"):
+            w, h = img.size
+            img = _resize_image(img, max_size)
+            resized = (img.size != (w, h))
+
+        if compress and ext_lower == ".png":
+            if _has_transparency(img):
+                img.save(os.path.join(output_dir, filename), "PNG", optimize=True)
+                return filename
+            else:
+                out_name = name + ".jpg"
+                img.convert("RGB").save(
+                    os.path.join(output_dir, out_name), "JPEG", quality=85
+                )
+                return out_name
+        elif ext_lower in (".jpg", ".jpeg"):
+            if resized:
+                img.save(os.path.join(output_dir, filename), "JPEG", quality=85)
+            else:
+                shutil.copy2(input_path, os.path.join(output_dir, filename))
             return filename
         else:
-            out_name = name + ".jpg"
-            img.convert("RGB").save(
-                os.path.join(output_dir, out_name), "JPEG", quality=85
-            )
-            return out_name
+            if resized:
+                img.save(os.path.join(output_dir, filename), "PNG", optimize=True)
+            else:
+                shutil.copy2(input_path, os.path.join(output_dir, filename))
+            return filename
 
 
 def guess_media_type(filename):
@@ -215,7 +250,7 @@ def _apply_img_renames(html_content, rename_map):
     return re.sub(r'src="images/([^"]+)"', replacer, html_content)
 
 
-def build_epub(input_dir, output_path, optimize_images=False):
+def build_epub(input_dir, output_path, compress_images=False, max_image_size=None):
     book_json_path = os.path.join(input_dir, "book.json")
     if not os.path.exists(book_json_path):
         print(f"Error: {book_json_path} not found", file=sys.stderr)
@@ -297,13 +332,17 @@ def build_epub(input_dir, output_path, optimize_images=False):
             book.add_item(img_item)
 
     if os.path.isdir(images_dir):
-        if optimize_images:
+        if compress_images or max_image_size:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 for img_name in os.listdir(images_dir):
                     img_path = os.path.join(images_dir, img_name)
                     if not os.path.isfile(img_path):
                         continue
-                    new_name = _optimize_image(img_path, tmp_dir)
+                    new_name = _optimize_image(
+                        img_path, tmp_dir,
+                        compress=compress_images,
+                        max_size=max_image_size,
+                    )
                     if new_name != img_name:
                         img_rename_map[img_name] = new_name
                 _add_images(tmp_dir)
@@ -379,12 +418,35 @@ def main():
     parser.add_argument("--input", required=True, help="Path to book directory")
     parser.add_argument("--output", required=True, help="Output EPUB file path")
     parser.add_argument(
-        "--optimize-images",
+        "--compress",
         action="store_true",
-        help="Optimize images: convert opaque PNG to JPEG, compress transparent PNG",
+        help="Compress images: convert opaque PNG to JPEG, losslessly optimize transparent PNG",
+    )
+    parser.add_argument(
+        "--max-size",
+        type=str,
+        default=None,
+        help="Resize PNG/JPEG images to fit within N pixels (longest side). "
+             "Use 'default' for 1440px, or a positive integer.",
     )
     args = parser.parse_args()
-    build_epub(args.input, args.output, optimize_images=args.optimize_images)
+
+    max_size = None
+    if args.max_size is not None:
+        if args.max_size.lower() == "default":
+            max_size = 1440
+        else:
+            try:
+                max_size = int(args.max_size)
+                if max_size <= 0:
+                    raise ValueError("must be positive")
+            except ValueError:
+                parser.error(
+                    f"--max-size: '{args.max_size}' is not valid "
+                    "(use 'default' or a positive integer)"
+                )
+
+    build_epub(args.input, args.output, compress_images=args.compress, max_image_size=max_size)
 
 
 if __name__ == "__main__":
