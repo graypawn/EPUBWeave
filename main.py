@@ -8,8 +8,6 @@ import re
 import sys
 import uuid
 
-from collections import OrderedDict
-
 from ebooklib import epub
 from PIL import Image
 
