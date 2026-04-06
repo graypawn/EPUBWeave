@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EPUBWeave book.json",
+  "description": "Metadata and structure for EPUB builder",
+  "type": "object",
+  "required": ["title", "author", "language", "chapters"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Book title",
+      "minLength": 1
+    },
+    "author": {
+      "type": "string",
+      "description": "Author name",
+      "minLength": 1
+    },
+    "language": {
+      "type": "string",
+      "description": "ISO 639-1 language code",
+      "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+      "examples": ["ko", "en", "ja", "zh", "en-US"]
+    },
+    "cover": {
+      "type": "string",
+      "description": "Cover image filename in images/ directory",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags/subjects for EPUB metadata",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "description": "Chapters and section headers",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Chapter or section title",
+            "minLength": 1
+          },
+          "file": {
+            "type": "string",
+            "description": "Relative path to chapter file in chapters/ directory (.body or .txt)",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": ["title", "file"],
+            "description": "Chapter with file"
+          },
+          {
+            "required": ["title"],
+            "not": {
+              "required": ["file"]
+            },
+            "description": "Section header (no file)"
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}
