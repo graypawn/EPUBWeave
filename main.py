@@ -302,13 +302,24 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     toc_entries = []     # TOC: EpubHtml or (Section, [EpubHtml, ...])
     chap_index = 0
 
+    section_index = 0
     current_section = None   # (Section, [chapters]) being built
     for ch in meta["chapters"]:
         if "file" not in ch:
-            # Section header (level item)
+            # Section header — generate a title page
             if current_section is not None:
                 toc_entries.append(tuple(current_section))
-            current_section = [epub.Section(ch["title"]), []]
+            section_index += 1
+            section_page = epub.EpubHtml(
+                title=ch["title"],
+                file_name=f"section_{section_index:04d}.xhtml",
+                lang=meta["language"],
+            )
+            section_page.set_content(f'<h1>{ch["title"]}</h1>')
+            section_page.add_item(css_item)
+            book.add_item(section_page)
+            chapter_items.append(section_page)
+            current_section = [epub.Section(ch["title"], section_page.file_name), []]
             continue
 
         chap_index += 1
