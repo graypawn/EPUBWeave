@@ -5,11 +5,8 @@ EPUB 리더에서만 확인할 수 있는 항목들.
 ## 준비
 
 ```bash
-# 테스트용 book 디렉토리 생성
-python tools/prepare_sample.py --text <텍스트파일> --image <이미지파일> -n 10 --output book
-
-# EPUB 생성
-python main.py --input book --output result.epub
+# sample 디렉토리로 EPUB 생성
+python main.py --input sample --output result.epub
 ```
 
 ## 테스트 항목
@@ -73,13 +70,13 @@ python main.py --input book --output result.epub
 
 ```bash
 # 압축만
-python main.py --input book --output compressed.epub --compress
+python main.py --input sample --output compressed.epub --compress
 
 # 리사이즈만
-python main.py --input book --output resized.epub --max-size 1080
+python main.py --input sample --output resized.epub --max-size 1080
 
 # 둘 다
-python main.py --input book --output both.epub --compress --max-size default
+python main.py --input sample --output both.epub --compress --max-size default
 ```
 
 - [ ] 압축: 불투명 PNG가 JPEG로 변환되어도 화질 저하가 눈에 띄지 않는가
