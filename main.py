@@ -109,7 +109,7 @@ def _svg_cover_html(cover_filename, width, height):
            xmlns:xlink="http://www.w3.org/1999/xlink"
            width="100%" height="100%" viewBox="0 0 {width} {height}"
            preserveAspectRatio="xMidYMid meet">
-        <image width="{width}" height="{height}" xlink:href="{cover_filename}"/>
+        <image width="{width}" height="{height}" xlink:href="images/{cover_filename}"/>
       </svg>
     </div>
   </body>
@@ -395,7 +395,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
 
     # TOC and spine
     book.toc = tuple(toc_entries)
-    spine_start = ["cover", "nav"] if cover_filename else ["nav"]
+    spine_start = ["cover"] if cover_filename else []
     book.spine = spine_start + chapter_items
 
     # Navigation
