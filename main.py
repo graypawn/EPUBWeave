@@ -82,6 +82,46 @@ def guess_media_type(filename):
     return MEDIA_TYPES.get(ext, "application/octet-stream")
 
 
+def _html_escape(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _clean_line(s):
+    s = s.replace("\u00a0", " ").replace("\u200b", "")
+    s = re.sub(r"^ +", lambda m: "&#160;" * len(m.group()), s)
+    return s.rstrip()
+
+
+def _wrap(tag, content, cls=None):
+    content = _clean_line(content)
+    if not content:
+        content = "<br/>"
+    else:
+        content = _html_escape(content)
+    if cls:
+        return f'<{tag} class="{cls}">{content}</{tag}>\n'
+    return f"<{tag}>{content}</{tag}>\n"
+
+
+def _convert_line(line):
+    line = line.rstrip("\n")
+    if line == "* * *":
+        return _wrap("p", line, cls="separator")
+    if line.startswith("@"):
+        if len(line) > 1 and line[1] == "@":
+            return _wrap("p", line[1:])
+        if len(line) > 1 and line[1].isdecimal():
+            level = line[1]
+            body = line[3:] if len(line) > 2 else ""
+            return _wrap(f"h{level}", body)
+    return _wrap("p", line)
+
+
+def convert_txt_to_body(text):
+    """Convert plain-text markup to HTML body content (.body format)."""
+    return "".join(_convert_line(line) for line in text.splitlines(keepends=True))
+
+
 def rewrite_image_src(html_content):
     """Rewrite bare image filenames to images/ path."""
     return re.sub(r'src="([^"/]+)"', r'src="images/\1"', html_content)
@@ -161,7 +201,12 @@ def build_epub(input_dir, output_path):
             sys.exit(1)
 
         with open(body_path, "r", encoding="utf-8") as f:
-            body_content = f.read()
+            raw = f.read()
+
+        if os.path.splitext(ch["file"])[1].lower() == ".txt":
+            body_content = convert_txt_to_body(raw)
+        else:
+            body_content = raw
 
         body_content = rewrite_image_src(body_content)
 
