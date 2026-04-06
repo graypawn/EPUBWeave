@@ -5,8 +5,8 @@ EPUB 리더에서만 확인할 수 있는 항목들.
 ## 준비
 
 ```bash
-# 테스트용 book 디렉토리 생성 (test_prepare.py 사용)
-python test_prepare.py --text <텍스트파일> --image <이미지파일> -n 10 --output book
+# 테스트용 book 디렉토리 생성
+python tools/prepare_sample.py --text <텍스트파일> --image <이미지파일> -n 10 --output book
 
 # EPUB 생성
 python main.py --input book --output result.epub
