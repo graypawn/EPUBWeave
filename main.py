@@ -285,29 +285,31 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     for tag in meta.get("tags", []):
         book.add_metadata("DC", "subject", tag.strip())
 
-    # Cover image
-    cover_filename = meta.get("cover")
-    if cover_filename:
-        cover_path = os.path.join(input_dir, "images", cover_filename)
-        if os.path.exists(cover_path):
-            with open(cover_path, "rb") as f:
-                cover_data = f.read()
-            # Add cover image without the default (non-SVG) cover HTML
-            book.set_cover("images/" + cover_filename, cover_data, create_page=False)
-            # Add SVG-based cover page
-            with Image.open(cover_path) as img:
-                width, height = img.size
-            cover_page = _SvgCoverHtml(
-                svg_content=_svg_cover_html(cover_filename, width, height),
-                image_name="images/" + cover_filename,
-            )
-            book.add_item(cover_page)
-        else:
-            print(f"Warning: cover image '{cover_path}' not found", file=sys.stderr)
-
-    # All images (excluding cover)
+    # Images
     images_dir = os.path.join(input_dir, "images")
     img_rename_map = {}  # old_name -> new_name (PNG → JPEG 변환 시)
+    cover_filename = meta.get("cover")
+
+    def _add_cover(src_dir):
+        nonlocal cover_filename
+        if not cover_filename:
+            return
+        cover_path = os.path.join(src_dir, cover_filename)
+        if not os.path.exists(cover_path):
+            orig_path = os.path.join(input_dir, "images", cover_filename)
+            print(f"Warning: cover image '{orig_path}' not found", file=sys.stderr)
+            cover_filename = None
+            return
+        with open(cover_path, "rb") as f:
+            cover_data = f.read()
+        book.set_cover("images/" + cover_filename, cover_data, create_page=False)
+        with Image.open(cover_path) as img:
+            width, height = img.size
+        cover_page = _SvgCoverHtml(
+            svg_content=_svg_cover_html(cover_filename, width, height),
+            image_name="images/" + cover_filename,
+        )
+        book.add_item(cover_page)
 
     def _add_images(src_dir):
         for img_name in os.listdir(src_dir):
@@ -340,8 +342,11 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
                     )
                     if new_name != img_name:
                         img_rename_map[img_name] = new_name
+                cover_filename = img_rename_map.get(cover_filename, cover_filename)
+                _add_cover(tmp_dir)
                 _add_images(tmp_dir)
         else:
+            _add_cover(images_dir)
             _add_images(images_dir)
 
     # Chapters
