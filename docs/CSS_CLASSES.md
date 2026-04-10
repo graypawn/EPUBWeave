@@ -1,6 +1,6 @@
 # CSS Classes
 
-`static/default.css`에서 제공하는 클래스 목록. 크롤러/변환기가 HTML을 생성할 때 참조.
+`static/fallback.css`에서 제공하는 클래스 목록 (사용자가 `style.css`를 따로 지정하지 않은 경우 적용되는 기본 스타일). 크롤러/변환기가 HTML을 생성할 때 참조.
 
 ## 구조 클래스
 

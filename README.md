@@ -140,4 +140,13 @@ HTML fragment. `<html>`, `<body>` 태그 없이 본문 내용만 포함:
 
 ### style.css (선택)
 
-`book/` 루트에 `style.css` 파일이 있으면 기본 스타일에 추가 적용됨.
+`book/` 루트에 `style.css` 파일이 있으면 해당 스타일이 적용됨.
+없으면 `static/fallback.css`의 기본 스타일이 대신 적용됨.
+
+| 상황 | 적용 스타일 |
+|------|------------|
+| `style.css` 있음 | `static/default.css` (빈 파일) + `style.css` |
+| `style.css` 없음 | `static/default.css` (빈 파일) + `static/fallback.css` |
+
+커스텀 스타일을 완전히 처음부터 작성하려면 `style.css`만 정의하면 됨.
+기본 스타일을 유지하면서 일부만 수정하려면 `static/fallback.css`의 내용을 `style.css`에 복사한 뒤 수정.

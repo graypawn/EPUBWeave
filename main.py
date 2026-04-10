@@ -25,8 +25,8 @@ class _SvgCoverHtml(epub.EpubCoverHtml):
     def get_content(self):
         return self.content
 
-def _load_default_css():
-    css_path = os.path.join(os.path.dirname(__file__), "static", "default.css")
+def _load_static_css(name):
+    css_path = os.path.join(os.path.dirname(__file__), "static", name)
     with open(css_path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -214,12 +214,15 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     book.set_language(meta["language"])
     book.add_author(meta["author"])
 
-    # CSS
-    css_content = _load_default_css()
+    # CSS: 빈 default.css를 베이스로, 사용자 style.css가 있으면 그걸로,
+    # 없으면 fallback.css 내용을 오버라이드한다.
+    css_content = _load_static_css("default.css")
     style_css_path = os.path.join(input_dir, "style.css")
     if os.path.exists(style_css_path):
         with open(style_css_path, "r", encoding="utf-8") as f:
             css_content += "\n/* --- style.css override --- */\n" + f.read()
+    else:
+        css_content += "\n/* --- fallback.css override --- */\n" + _load_static_css("fallback.css")
 
     css_item = epub.EpubItem(
         uid="default_css",

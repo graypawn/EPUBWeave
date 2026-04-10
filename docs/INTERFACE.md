@@ -83,7 +83,7 @@ Common error messages:
 ```
 <input_dir>/
 ├── book.json              (required)
-├── style.css              (optional)
+├── style.css              (optional — overrides fallback.css when present)
 ├── chapters/              (required if chapters have files)
 │   ├── NNNN.body          (HTML fragment)
 │   ├── NNNN.txt           (plain text with markup)
@@ -93,6 +93,15 @@ Common error messages:
     ├── illustration.png
     └── ...
 ```
+
+### CSS resolution order
+
+| Condition | CSS applied |
+|-----------|-------------|
+| `style.css` present | `static/default.css` (empty) + `style.css` |
+| `style.css` absent  | `static/default.css` (empty) + `static/fallback.css` |
+
+`static/fallback.css` contains the built-in default styles (typography, `.ibox`, `.intro`, etc.).
 
 ## File Format Contracts
 
