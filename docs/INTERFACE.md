@@ -71,6 +71,9 @@ Common error messages:
 - `file` (string, optional) — path to chapter file in `chapters/` directory
   - If absent: treated as TOC section header; subsequent chapters group under this section
   - If present: must exist and be readable
+- `toc` (boolean, optional, default `true`) — include this chapter in the table of contents
+  - Only applies when `file` is present
+  - Set to `false` to add the page to the spine (readable in flow) but hide it from the TOC
 
 **Validation:**
 - Missing required fields → exit 1

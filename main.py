@@ -352,10 +352,11 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
         book.add_item(chapter)
         chapter_items.append(chapter)
 
-        if current_section is not None:
-            current_section[1].append(chapter)
-        else:
-            toc_entries.append(chapter)
+        if ch.get("toc", True):
+            if current_section is not None:
+                current_section[1].append(chapter)
+            else:
+                toc_entries.append(chapter)
 
     if current_section is not None:
         toc_entries.append(tuple(current_section))

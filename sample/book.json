@@ -36,7 +36,8 @@
     },
     {
       "title": "흡혈귀",
-      "file": "0005.body"
+      "file": "0005.body",
+      "toc": false
     },
     {
       "title": "우체통",
