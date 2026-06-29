@@ -11,7 +11,9 @@ import tempfile
 import uuid
 
 from ebooklib import epub
-from PIL import Image
+from PIL import Image, ImageFile
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class _SvgCoverHtml(epub.EpubCoverHtml):
@@ -81,6 +83,19 @@ def _resize_image(img, max_size):
     return img
 
 
+def _is_truncated_image(input_path):
+    previous = ImageFile.LOAD_TRUNCATED_IMAGES
+    ImageFile.LOAD_TRUNCATED_IMAGES = False
+    try:
+        with Image.open(input_path) as img:
+            img.load()
+        return False
+    except OSError as exc:
+        return "truncated" in str(exc).lower()
+    finally:
+        ImageFile.LOAD_TRUNCATED_IMAGES = previous
+
+
 def _optimize_image(input_path, output_dir, compress=False, max_size=None):
     """Process a single image for EPUB. Returns output filename.
 
@@ -98,6 +113,9 @@ def _optimize_image(input_path, output_dir, compress=False, max_size=None):
     if ext_lower == ".gif":
         shutil.copy2(input_path, os.path.join(output_dir, filename))
         return filename
+
+    if _is_truncated_image(input_path):
+        print(f"Warning: truncated image repaired during build: {input_path}", file=sys.stderr)
 
     with Image.open(input_path) as img:
         resized = False
@@ -118,7 +136,8 @@ def _optimize_image(input_path, output_dir, compress=False, max_size=None):
                 return out_name
         elif ext_lower in (".jpg", ".jpeg"):
             if resized:
-                img.save(os.path.join(output_dir, filename), "JPEG", quality=85)
+                jpeg_img = img if img.mode == "RGB" else img.convert("RGB")
+                jpeg_img.save(os.path.join(output_dir, filename), "JPEG", quality=85)
             else:
                 shutil.copy2(input_path, os.path.join(output_dir, filename))
             return filename
