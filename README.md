@@ -10,6 +10,49 @@ pip install -r requirements.txt
 
 필수 패키지: `ebooklib`, `pillow`
 
+## 독립 실행 파일 배포 (권장)
+
+TextSpinner 같은 서버에서 EPUBWeave를 사용할 때는 PyInstaller로 빌드한 Linux 실행 파일을 배포하는 방식을 권장합니다. 실행 파일에는 Python 인터프리터와 `ebooklib`, `Pillow`가 포함되므로, **TextSpinner 런타임 이미지에 Python이나 pip를 설치할 필요가 없습니다.**
+
+기존 CLI 인터페이스는 그대로 유지됩니다.
+
+```bash
+./epubweave --input <book_dir> --output <output.epub> [옵션]
+```
+
+### 실행 파일 빌드
+
+Docker BuildKit으로 현재 플랫폼용 실행 파일을 생성합니다.
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+  --target artifact \
+  --output type=local,dest=./dist \
+  .
+
+./dist/epubweave --input sample --output result.epub
+```
+
+빌드 과정에서는 `smoke-test` 스테이지가 Python이 없는 Debian 이미지에서 샘플 EPUB를 생성해 실행 파일을 검증합니다.
+
+TextSpinner 컨테이너에는 생성한 파일만 복사하고 실행 권한을 부여하면 됩니다.
+
+```dockerfile
+COPY --chmod=755 epubweave /usr/local/bin/epubweave
+```
+
+이후 기존 `python3 main.py ...` 호출을 `epubweave ...`로 바꾸면 됩니다.
+
+### Alpine Linux 주의 사항
+
+기본 빌드는 Debian 계열(`glibc`) Linux 실행 파일을 만듭니다. 따라서 이 실행 파일은 현재 TextSpinner가 사용하는 `node:*-alpine` 같은 Alpine(`musl`) 이미지에서 실행되지 않을 수 있습니다.
+
+**권장 방식은 TextSpinner 런타임을 `node:22-bookworm-slim` 등 Debian 계열 이미지로 변경하고, 같은 CPU 아키텍처에서 빌드한 실행 파일을 복사하는 것입니다.** 이렇게 하면 Pillow의 네이티브 라이브러리 호환성을 가장 안정적으로 보장할 수 있습니다.
+
+Alpine을 계속 사용해야 한다면 Alpine 환경에서 별도의 musl용 실행 파일을 빌드하고, 해당 Alpine 런타임에서 반드시 통합 테스트해야 합니다. Debian용 실행 파일을 Alpine에 복사하는 방식은 지원하지 않습니다.
+
+`linux/amd64`와 `linux/arm64` 실행 파일도 서로 호환되지 않으므로, 배포 대상 아키텍처별로 각각 빌드해야 합니다.
+
 ## 사용법
 
 ```bash
