@@ -2,17 +2,25 @@
 
 크롤러가 생성한 `book/` 디렉토리 구조를 EPUB 파일로 변환하는 빌더.
 
-## 설치
+## 설치 (권장)
+
+GitHub Release에서 배포 대상에 맞는 독립 실행 파일을 내려받습니다.
+
+| 배포 대상 | 파일명 |
+|-----------|--------|
+| Intel/AMD 64비트 Linux | `epubweave-linux-amd64-glibc` |
+| ARM 64비트 Linux | `epubweave-linux-arm64-glibc` |
 
 ```bash
-pip install -r requirements.txt
+# Intel/AMD 64비트 Linux 예시
+curl --fail --location \
+  --output epubweave \
+  https://github.com/graypawn/EPUBWeave/releases/latest/download/epubweave-linux-amd64-glibc
+chmod +x epubweave
+sudo install -m 755 epubweave /usr/local/bin/epubweave
 ```
 
-필수 패키지: `ebooklib`, `pillow`
-
-## 독립 실행 파일 배포 (권장)
-
-TextSpinner 같은 서버에서 EPUBWeave를 사용할 때는 PyInstaller로 빌드한 Linux 실행 파일을 배포하는 방식을 권장합니다. 실행 파일에는 Python 인터프리터와 `ebooklib`, `Pillow`가 포함되므로, **TextSpinner 런타임 이미지에 Python이나 pip를 설치할 필요가 없습니다.**
+실행 파일에는 Python 인터프리터와 `ebooklib`, `Pillow`가 포함되므로, **TextSpinner 런타임 이미지에 Python이나 pip를 설치할 필요가 없습니다.**
 
 기존 CLI 인터페이스는 그대로 유지됩니다.
 
@@ -20,7 +28,7 @@ TextSpinner 같은 서버에서 EPUBWeave를 사용할 때는 PyInstaller로 빌
 ./epubweave --input <book_dir> --output <output.epub> [옵션]
 ```
 
-### 실행 파일 빌드
+### 직접 빌드
 
 Docker BuildKit으로 현재 플랫폼용 실행 파일을 생성합니다.
 
@@ -41,7 +49,7 @@ TextSpinner 컨테이너에는 생성한 파일만 복사하고 실행 권한을
 COPY --chmod=755 epubweave /usr/local/bin/epubweave
 ```
 
-이후 기존 `python3 main.py ...` 호출을 `epubweave ...`로 바꾸면 됩니다.
+TextSpinner는 `/usr/local/bin/epubweave ...`를 직접 실행하면 됩니다.
 
 ### Alpine Linux 주의 사항
 
@@ -56,29 +64,29 @@ Alpine을 계속 사용해야 한다면 Alpine 환경에서 별도의 musl용 �
 ## 사용법
 
 ```bash
-python main.py --input <book_dir> --output <output.epub> [옵션]
+epubweave --input <book_dir> --output <output.epub> [옵션]
 ```
 
 ### 기본 예시
 
 ```bash
-python main.py --input book --output result.epub
+epubweave --input book --output result.epub
 ```
 
 ### 이미지 최적화
 
 ```bash
 # 이미지 압축 (불투명 PNG → JPEG 변환, 투명 PNG → 무손실 최적화)
-python main.py --input book --output result.epub --compress
+epubweave --input book --output result.epub --compress
 
 # 이미지 리사이즈 (기본값 1440px)
-python main.py --input book --output result.epub --max-size default
+epubweave --input book --output result.epub --max-size default
 
 # 이미지 리사이즈 (지정 크기)
-python main.py --input book --output result.epub --max-size 1080
+epubweave --input book --output result.epub --max-size 1080
 
 # 압축 + 리사이즈 동시 적용
-python main.py --input book --output result.epub --compress --max-size default
+epubweave --input book --output result.epub --compress --max-size default
 ```
 
 | 옵션 | 설명 |
