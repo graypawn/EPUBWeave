@@ -2,6 +2,7 @@
 """EPUB Builder — converts a structured book directory into an EPUB file."""
 
 import argparse
+import importlib.metadata
 import json
 import os
 import re
@@ -9,6 +10,8 @@ import shutil
 import sys
 import tempfile
 import uuid
+import zipfile
+from pathlib import PurePosixPath
 
 from ebooklib import epub
 from PIL import Image, ImageFile
@@ -40,6 +43,15 @@ MEDIA_TYPES = {
     ".svg": "image/svg+xml",
     ".webp": "image/webp",
 }
+
+EPUBWEAVE_MANIFEST_PATH = "META-INF/epubweave.json"
+EPUBWEAVE_FORMAT_VERSION = 1
+EPUB_CONTENT_ROOT = "EPUB"
+
+try:
+    __version__ = importlib.metadata.version("epubweave")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "2.0.0"
 
 
 def _svg_cover_html(cover_filename, width, height):
@@ -212,6 +224,196 @@ def _apply_img_renames(html_content, rename_map):
     return re.sub(r'src="images/([^"]+)"', replacer, html_content)
 
 
+def _write_epubweave_manifest(output_path, manifest):
+    """Add EPUBWeave's private, non-reading metadata to a generated EPUB."""
+    with zipfile.ZipFile(output_path, "a", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            EPUBWEAVE_MANIFEST_PATH,
+            json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+
+
+def _package_path(href):
+    """Return an EPUBWeave writer archive path for an OPF-relative href."""
+    return f"{EPUB_CONTENT_ROOT}/{href}"
+
+
+def _read_package_file(archive, href):
+    return archive.read(_package_path(href))
+
+
+def _safe_image_name(name):
+    path = PurePosixPath(name)
+    return bool(name) and path.name == name and name not in (".", "..")
+
+
+def _safe_content_href(href):
+    path = PurePosixPath(href)
+    return (
+        bool(href)
+        and not path.is_absolute()
+        and ".." not in path.parts
+        and path.parts
+        and path.parts[0] not in (".", "..")
+    )
+
+
+def _chapter_body_from_xhtml(xhtml, href):
+    """Extract EPUBWeave's body fragment without retaining the XHTML wrapper."""
+    match = re.search(r"<body(?:\s[^>]*)?>(.*?)</body\s*>", xhtml, re.IGNORECASE | re.DOTALL)
+    if not match:
+        raise ValueError(f"chapter '{href}' has no body element")
+    # EpubHtml adds outer formatting whitespace. Removing it prevents growth on
+    # every unpack → build cycle while leaving meaningful internal markup intact.
+    return match.group(1).strip()
+
+
+def _unpacked_style_content(style_content):
+    """Remove the built-in base once before making an editable style.css."""
+    default_css = _load_static_css("default.css")
+    if default_css and style_content.startswith(default_css):
+        style_content = style_content[len(default_css):]
+    # EbookLib may omit the final newline when serializing CSS. Canonicalize it
+    # once so later unpack/build cycles are identical.
+    return style_content.rstrip() + "\n"
+
+
+def _unpack_error(message):
+    print(f"Error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def unpack_epub(input_path, output_dir):
+    """Unpack an EPUBWeave-generated EPUB into its normalized book directory."""
+    if not os.path.isfile(input_path):
+        _unpack_error(f"{input_path} not found")
+    if os.path.exists(output_dir):
+        _unpack_error(f"output directory '{output_dir}' already exists")
+
+    try:
+        with zipfile.ZipFile(input_path) as archive:
+            try:
+                manifest = json.loads(
+                    archive.read(EPUBWEAVE_MANIFEST_PATH).decode("utf-8")
+                )
+            except KeyError:
+                _unpack_error("not an EPUBWeave EPUB (metadata manifest missing)")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                _unpack_error("EPUBWeave metadata manifest is invalid")
+
+            if (
+                manifest.get("format") != "EPUBWeave"
+                or manifest.get("version") != EPUBWEAVE_FORMAT_VERSION
+            ):
+                _unpack_error("unsupported EPUBWeave metadata manifest version")
+
+            metadata = manifest.get("metadata")
+            chapters = manifest.get("chapters")
+            images = manifest.get("images")
+            style_href = manifest.get("style")
+            if (
+                not isinstance(metadata, dict)
+                or not isinstance(chapters, list)
+                or not isinstance(images, list)
+                or not isinstance(style_href, str)
+                or not _safe_content_href(style_href)
+            ):
+                _unpack_error("EPUBWeave metadata manifest has an invalid structure")
+
+            for field in ("title", "author", "language"):
+                if not isinstance(metadata.get(field), str) or not metadata[field]:
+                    _unpack_error(f"EPUBWeave metadata manifest is missing '{field}'")
+            tags = metadata.get("tags", [])
+            if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+                _unpack_error("EPUBWeave metadata manifest has invalid tags")
+
+            for image_name in images:
+                if not isinstance(image_name, str) or not _safe_image_name(image_name):
+                    _unpack_error("EPUBWeave metadata manifest has an invalid image name")
+
+            parent = os.path.dirname(os.path.abspath(output_dir))
+            os.makedirs(parent, exist_ok=True)
+            temp_dir = tempfile.mkdtemp(prefix=".epubweave-unpack-", dir=parent)
+            try:
+                chapters_dir = os.path.join(temp_dir, "chapters")
+                images_dir = os.path.join(temp_dir, "images")
+                os.makedirs(chapters_dir)
+                os.makedirs(images_dir)
+
+                try:
+                    style_content = _read_package_file(archive, style_href).decode("utf-8")
+                except (KeyError, UnicodeDecodeError):
+                    _unpack_error("could not extract EPUBWeave stylesheet")
+                with open(os.path.join(temp_dir, "style.css"), "w", encoding="utf-8") as f:
+                    f.write(_unpacked_style_content(style_content))
+
+                for image_name in images:
+                    try:
+                        image_content = _read_package_file(archive, f"images/{image_name}")
+                    except KeyError:
+                        _unpack_error(f"could not extract image '{image_name}'")
+                    with open(os.path.join(images_dir, image_name), "wb") as f:
+                        f.write(image_content)
+
+                book_meta = {
+                    "title": metadata["title"],
+                    "author": metadata["author"],
+                    "language": metadata["language"],
+                    "chapters": [],
+                }
+                if tags:
+                    book_meta["tags"] = tags
+                cover = manifest.get("cover")
+                if cover is not None:
+                    if not isinstance(cover, str) or not _safe_image_name(cover) or cover not in images:
+                        _unpack_error("EPUBWeave metadata manifest has an invalid cover")
+                    book_meta["cover"] = cover
+
+                chapter_number = 0
+                for chapter in chapters:
+                    if not isinstance(chapter, dict):
+                        _unpack_error("EPUBWeave metadata manifest has an invalid chapter")
+                    kind = chapter.get("kind")
+                    title = chapter.get("title")
+                    if kind not in ("section", "chapter") or not isinstance(title, str) or not title:
+                        _unpack_error("EPUBWeave metadata manifest has an invalid chapter")
+                    if kind == "section":
+                        book_meta["chapters"].append({"title": title})
+                        continue
+
+                    href = chapter.get("href")
+                    if not isinstance(href, str) or not _safe_content_href(href):
+                        _unpack_error("EPUBWeave metadata manifest has an invalid chapter path")
+                    try:
+                        xhtml = _read_package_file(archive, href).decode("utf-8")
+                        body = _chapter_body_from_xhtml(xhtml, href)
+                    except (KeyError, UnicodeDecodeError, ValueError) as exc:
+                        _unpack_error(f"could not extract chapter '{href}': {exc}")
+
+                    chapter_number += 1
+                    filename = f"{chapter_number:04d}.body"
+                    with open(os.path.join(chapters_dir, filename), "w", encoding="utf-8") as f:
+                        f.write(body)
+                    entry = {"title": title, "file": filename}
+                    if chapter.get("toc") is False:
+                        entry["toc"] = False
+                    book_meta["chapters"].append(entry)
+
+                with open(os.path.join(temp_dir, "book.json"), "w", encoding="utf-8") as f:
+                    json.dump(book_meta, f, ensure_ascii=False, indent=2)
+                    f.write("\n")
+
+                os.rename(temp_dir, output_dir)
+                temp_dir = None
+            finally:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+    except zipfile.BadZipFile:
+        _unpack_error(f"{input_path} is not a valid EPUB/ZIP file")
+
+    print(f"EPUB unpacked: {input_path} -> {output_dir}")
+
+
 def build_epub(input_dir, output_path, compress_images=False, max_image_size=None):
     book_json_path = os.path.join(input_dir, "book.json")
     if not os.path.exists(book_json_path):
@@ -233,15 +435,15 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     book.set_language(meta["language"])
     book.add_author(meta["author"])
 
-    # CSS: 빈 default.css를 베이스로, 사용자 style.css가 있으면 그걸로,
-    # 없으면 fallback.css 내용을 오버라이드한다.
+    # CSS: default.css is currently empty. Keep the effective stylesheet itself
+    # free of build-marker comments so unpacked books do not accumulate wrappers.
     css_content = _load_static_css("default.css")
     style_css_path = os.path.join(input_dir, "style.css")
     if os.path.exists(style_css_path):
         with open(style_css_path, "r", encoding="utf-8") as f:
-            css_content += "\n/* --- style.css override --- */\n" + f.read()
+            css_content += f.read()
     else:
-        css_content += "\n/* --- fallback.css override --- */\n" + _load_static_css("fallback.css")
+        css_content += _load_static_css("fallback.css")
 
     css_item = epub.EpubItem(
         uid="default_css",
@@ -258,6 +460,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     # Images
     images_dir = os.path.join(input_dir, "images")
     img_rename_map = {}  # old_name -> new_name (PNG → JPEG 변환 시)
+    included_image_names = []
     cover_filename = meta.get("cover")
 
     def _add_cover(src_dir):
@@ -315,13 +518,28 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
                 cover_filename = img_rename_map.get(cover_filename, cover_filename)
                 _add_cover(tmp_dir)
                 _add_images(tmp_dir)
+                included_image_names = sorted(
+                    name for name in os.listdir(tmp_dir)
+                    if os.path.isfile(os.path.join(tmp_dir, name))
+                )
         else:
             _add_cover(images_dir)
             _add_images(images_dir)
+            included_image_names = sorted(
+                name for name in os.listdir(images_dir)
+                if os.path.isfile(os.path.join(images_dir, name))
+            )
+    elif cover_filename:
+        print(
+            f"Warning: cover image '{os.path.join(images_dir, cover_filename)}' not found",
+            file=sys.stderr,
+        )
+        cover_filename = None
 
     # Chapters
     chapter_items = []   # all EpubHtml items (for spine)
     toc_entries = []     # TOC: EpubHtml or (Section, [EpubHtml, ...])
+    manifest_chapters = []
     chap_index = 0
 
     section_index = 0
@@ -342,6 +560,11 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
             book.add_item(section_page)
             chapter_items.append(section_page)
             current_section = [epub.Section(ch["title"], section_page.file_name), []]
+            manifest_chapters.append({
+                "kind": "section",
+                "title": ch["title"],
+                "href": section_page.file_name,
+            })
             continue
 
         chap_index += 1
@@ -370,6 +593,12 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
         chapter.add_item(css_item)
         book.add_item(chapter)
         chapter_items.append(chapter)
+        manifest_chapters.append({
+            "kind": "chapter",
+            "title": ch["title"],
+            "href": chapter.file_name,
+            "toc": ch.get("toc", True),
+        })
 
         if ch.get("toc", True):
             if current_section is not None:
@@ -391,14 +620,36 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
 
     # Write
     epub.write_epub(output_path, book, {})
+    _write_epubweave_manifest(output_path, {
+        "format": "EPUBWeave",
+        "version": EPUBWEAVE_FORMAT_VERSION,
+        "metadata": {
+            "title": meta["title"],
+            "author": meta["author"],
+            "language": meta["language"],
+            "tags": [tag.strip() for tag in meta.get("tags", [])],
+        },
+        "style": css_item.file_name,
+        "cover": cover_filename,
+        "images": included_image_names,
+        "chapters": manifest_chapters,
+    })
     size = os.path.getsize(output_path)
     print(f"EPUB created: {output_path} ({size:,} bytes, {len(chapter_items)} chapters)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build EPUB from book directory")
-    parser.add_argument("--input", required=True, help="Path to book directory")
-    parser.add_argument("--output", required=True, help="Output EPUB file path")
+    parser = argparse.ArgumentParser(description="Build or unpack an EPUBWeave book")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument("--input", required=True, help="Input book directory or EPUB with --unpack")
+    parser.add_argument("--output", required=True, help="Output EPUB file or directory with --unpack")
+    parser.add_argument(
+        "--unpack",
+        action="store_true",
+        help="Unpack an EPUBWeave-generated EPUB into a normalized book directory",
+    )
     parser.add_argument(
         "--compress",
         action="store_true",
@@ -412,6 +663,12 @@ def main():
              "Use 'default' for 1440px, or a positive integer.",
     )
     args = parser.parse_args()
+
+    if args.unpack:
+        if args.compress or args.max_size is not None:
+            parser.error("--compress and --max-size cannot be used with --unpack")
+        unpack_epub(args.input, args.output)
+        return
 
     max_size = None
     if args.max_size is not None:

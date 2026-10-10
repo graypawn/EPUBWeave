@@ -1,6 +1,7 @@
-# EPUBWeave
+# EPUBWeave v2.0.0
 
 크롤러가 생성한 `book/` 디렉토리 구조를 EPUB 파일로 변환하는 빌더.
+EPUBWeave로 생성한 EPUB는 `--unpack`으로 다시 편집 가능한 `book/` 디렉터리로 풀 수 있습니다.
 
 ## 설치 (권장)
 
@@ -67,6 +68,48 @@ Alpine을 계속 사용해야 한다면 Alpine 환경에서 별도의 musl용 �
 epubweave --input <book_dir> --output <output.epub> [옵션]
 ```
 
+### EPUB 다시 편집하기 (v2.0)
+
+EPUBWeave로 생성한 EPUB는 다시 편집 가능한 `book/` 디렉터리로 풀 수 있습니다.
+
+```bash
+epubweave --unpack --input result.epub --output book
+```
+
+- `book.json`, `style.css`, `chapters/*.body`, `images/`를 생성합니다.
+- `.txt` 챕터는 EPUB에 저장된 HTML 본문을 기준으로 `.body`가 됩니다.
+- 이미지 최적화 결과는 그대로 유지됩니다. 풀어 낸 뒤 옵션 없이 다시 빌드하면 이미지가 재압축·재리사이즈되지 않습니다.
+- 이 기능은 EPUBWeave가 생성한 EPUB에만 지원됩니다. 일반 EPUB은 구조를 추측해 변환하지 않습니다.
+- 출력 경로는 존재하지 않아야 합니다. 기존 디렉터리와 병합하지 않아 이전 추출물의 파일이 남는 일을 방지합니다.
+
+### 왕복 편집 워크플로
+
+EPUBWeave는 **반복 편집·재빌드 시 내용·이미지 품질·구조가 누적 변형되지 않는** 정규화된 왕복을 보장합니다.
+
+```bash
+# 1. 최초 빌드 (이미지 최적화 포함)
+epubweave --input book --output novel.epub --compress --max-size default
+
+# 2. 편집용으로 언팩
+epubweave --unpack --input novel.epub --output book
+
+# 3. 챕터 추가/삭제/수정
+#    book/chapters/0005.body  ← 새로 추가
+#    book/book.json           ← chapters 순서·제목·toc 수정
+
+# 4. 다시 빌드 (이미지 옵션 없이 → 재압축 없음)
+epubweave --input book --output novel.epub
+
+# 5. 필요 시 다시 언팩 → 3~4 반복
+```
+
+| 단계 | 이미지 | 설명 |
+|------|--------|------|
+| 최초 빌드 `--compress --max-size` | 최적화 적용 | 원본 → 리사이즈 → 압축 |
+| 언팩 | 최적화 결과 그대로 추출 | 바이트 단위 동일 |
+| 재빌드 (옵션 없음) | 재처리 안 함 | 이미지 바이트 동일 유지 |
+| 재빌드 (옵션 다시 지정) | 다시 적용 | 의도적 재최적화 |
+
 ### 기본 예시
 
 ```bash
@@ -94,6 +137,7 @@ epubweave --input book --output result.epub --compress --max-size default
 | `--compress` | 불투명 PNG를 JPEG(quality=85)로 변환, 투명 PNG는 무손실 최적화 |
 | `--max-size default` | PNG/JPEG를 1440px 이내로 리사이즈 (긴 변 기준) |
 | `--max-size <정수>` | PNG/JPEG를 지정 크기 이내로 리사이즈 |
+| `--unpack` | EPUBWeave EPUB을 편집 가능한 book 디렉터리로 추출 |
 
 - 리사이즈는 PNG/JPEG에만 적용 (GIF는 항상 원본 유지)
 - 원본 이미지 파일은 수정되지 않음 (임시 디렉토리에서 처리)
@@ -206,3 +250,11 @@ HTML fragment. `<html>`, `<body>` 태그 없이 본문 내용만 포함:
 
 커스텀 스타일을 완전히 처음부터 작성하려면 `style.css`만 정의하면 됨.
 기본 스타일을 유지하면서 일부만 수정하려면 `static/fallback.css`의 내용을 `style.css`에 복사한 뒤 수정.
+
+## v2.0 변경 사항
+
+- **`--unpack` 명령 추가**: EPUBWeave 생성 EPUB를 정규화된 `book/` 디렉터리로 역변환
+- **왕복 안정성 보장**: `unpack → build → unpack` 반복 시 CSS·본문·이미지 바이트 동일성 유지
+- **이미지 재처리 방지**: 언팩 후 옵션 없는 빌드는 이미지 최적화를 재적용하지 않음
+- **CSS 정규화**: 내장 기본 스타일이 매번 중복되지 않고 한 번만 적용되도록 보정
+- **CLI 인자 변경**: `--input`/`--output`은 빌드·언팩 공용, `--unpack` 플래그로 모드 전환

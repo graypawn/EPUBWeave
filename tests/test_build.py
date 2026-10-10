@@ -11,7 +11,7 @@ import zipfile
 import pytest
 from PIL import Image
 
-from main import build_epub
+from main import build_epub, unpack_epub
 
 
 @pytest.fixture
@@ -183,6 +183,89 @@ class TestBuildEpubSections:
             assert len(xhtml_files) == 3
 
 
+class TestUnpackEpub:
+    def _unpack_path(self):
+        path = tempfile.mkdtemp()
+        shutil.rmtree(path)
+        return path
+
+    def _tree(self, root):
+        result = {}
+        for base, _, files in os.walk(root):
+            for filename in files:
+                path = os.path.join(base, filename)
+                result[os.path.relpath(path, root)] = open(path, "rb").read()
+        return result
+
+    def test_unpacks_normalized_book_and_is_repeatable(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["chapters"] = [
+            {"title": "제1부"},
+            {"title": "1장", "file": "001.body"},
+            {"title": "2장", "file": "002.body", "toc": False},
+            {"title": "제2부"},
+            {"title": "3장", "file": "003.txt"},
+        ]
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        first_dir = self._unpack_path()
+        unpack_epub(output_epub, first_dir)
+
+        with open(os.path.join(first_dir, "book.json"), encoding="utf-8") as f:
+            unpacked = json.load(f)
+        assert unpacked["chapters"] == [
+            {"title": "제1부"},
+            {"title": "1장", "file": "0001.body"},
+            {"title": "2장", "file": "0002.body", "toc": False},
+            {"title": "제2부"},
+            {"title": "3장", "file": "0003.body"},
+        ]
+        assert os.path.exists(os.path.join(first_dir, "style.css"))
+        assert open(os.path.join(first_dir, "images", "illust.png"), "rb").read() == open(
+            os.path.join(book_dir, "images", "illust.png"), "rb"
+        ).read()
+
+        rebuilt_epub = output_epub + ".rebuilt.epub"
+        build_epub(first_dir, rebuilt_epub)
+        second_dir = self._unpack_path()
+        unpack_epub(rebuilt_epub, second_dir)
+        assert self._tree(first_dir) == self._tree(second_dir)
+
+        shutil.rmtree(first_dir)
+        shutil.rmtree(second_dir)
+        os.unlink(rebuilt_epub)
+
+    def test_optimized_images_are_not_reprocessed_on_default_rebuild(self, book_dir, output_epub):
+        build_epub(book_dir, output_epub, compress_images=True)
+        first_dir = self._unpack_path()
+        unpack_epub(output_epub, first_dir)
+        assert os.path.exists(os.path.join(first_dir, "images", "illust.jpg"))
+
+        rebuilt_epub = output_epub + ".rebuilt.epub"
+        build_epub(first_dir, rebuilt_epub)
+        second_dir = self._unpack_path()
+        unpack_epub(rebuilt_epub, second_dir)
+        assert open(os.path.join(first_dir, "images", "illust.jpg"), "rb").read() == open(
+            os.path.join(second_dir, "images", "illust.jpg"), "rb"
+        ).read()
+
+        shutil.rmtree(first_dir)
+        shutil.rmtree(second_dir)
+        os.unlink(rebuilt_epub)
+
+    def test_rejects_epub_without_epubweave_manifest(self, tmp_path):
+        epub_path = tmp_path / "other.epub"
+        with zipfile.ZipFile(epub_path, "w") as archive:
+            archive.writestr("mimetype", "application/epub+zip")
+
+        with pytest.raises(SystemExit):
+            unpack_epub(str(epub_path), str(tmp_path / "book"))
+
+
 class TestBuildEpubEdgeCases:
     def test_no_cover(self, book_dir, output_epub):
         meta_path = os.path.join(book_dir, "book.json")
@@ -275,3 +358,12 @@ class TestCLI:
             "--input", book_dir, "--output", output_epub, "--compress"
         )
         assert result.returncode == 0
+
+    def test_unpack(self, book_dir, output_epub, tmp_path):
+        build_epub(book_dir, output_epub)
+        output_dir = tmp_path / "unpacked"
+        result = self._run(
+            "--unpack", "--input", output_epub, "--output", str(output_dir)
+        )
+        assert result.returncode == 0
+        assert (output_dir / "book.json").exists()
