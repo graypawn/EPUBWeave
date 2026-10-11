@@ -13,39 +13,55 @@
     },
     {
       "title": "밀가루를 뿌려",
-      "file": "0000.body"
+      "file": "0000.body",
+      "spinner": "textspinner",
+      "id": 1
     },
     {
       "title": "오해하겠어",
-      "file": "0001.body"
+      "file": "0001.body",
+      "spinner": "textspinner",
+      "id": 2
     },
     {
       "title": "고양이 소리가 나와요",
-      "file": "0002.body"
+      "file": "0002.body",
+      "spinner": "textspinner",
+      "id": 3
     },
     {
       "title": "또 만난 무서운 멍멍이",
-      "file": "0003.body"
+      "file": "0003.body",
+      "spinner": "textspinner",
+      "id": 4
     },
     {
       "title": "제2부"
     },
     {
       "title": "왕이는 사실 엄마냐?",
-      "file": "0004.body"
+      "file": "0004.body",
+      "spinner": "textspinner",
+      "id": 5
     },
     {
       "title": "흡혈귀",
       "file": "0005.body",
+      "spinner": "textspinner",
+      "id": 6,
       "toc": false
     },
     {
       "title": "우체통",
-      "file": "0006.body"
+      "file": "0006.body",
+      "spinner": "textspinner",
+      "id": 7
     },
     {
       "title": "동족 포식",
-      "file": "0007.body"
+      "file": "0007.body",
+      "spinner": "textspinner",
+      "id": 8
     }
   ]
 }

@@ -56,18 +56,33 @@
             "type": "boolean",
             "description": "Whether to include this chapter in the table of contents (default: true). Only meaningful when 'file' is set.",
             "default": true
+          },
+          "spinner": {
+            "type": "string",
+            "description": "Identifier of the spinner that last generated or replaced this chapter's body",
+            "minLength": 1
+          },
+          "id": {
+            "type": "integer",
+            "description": "Optional unique positive integer episode identifier",
+            "minimum": 1
           }
         },
         "additionalProperties": false,
         "oneOf": [
           {
-            "required": ["title", "file"],
+            "required": ["title", "file", "spinner"],
             "description": "Chapter with file"
           },
           {
             "required": ["title"],
             "not": {
-              "required": ["file"]
+              "anyOf": [
+                {"required": ["file"]},
+                {"required": ["toc"]},
+                {"required": ["spinner"]},
+                {"required": ["id"]}
+              ]
             },
             "description": "Section header (no file)"
           }

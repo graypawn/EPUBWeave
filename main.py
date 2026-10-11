@@ -45,13 +45,13 @@ MEDIA_TYPES = {
 }
 
 EPUBWEAVE_MANIFEST_PATH = "META-INF/epubweave.json"
-EPUBWEAVE_FORMAT_VERSION = 1
+EPUBWEAVE_FORMAT_VERSION = 2
 EPUB_CONTENT_ROOT = "EPUB"
 
 try:
     __version__ = importlib.metadata.version("epubweave")
 except importlib.metadata.PackageNotFoundError:
-    __version__ = "2.0.0"
+    __version__ = "3.0.0"
 
 
 def _svg_cover_html(cover_filename, width, height):
@@ -283,6 +283,41 @@ def _unpack_error(message):
     sys.exit(1)
 
 
+def _build_error(message):
+    print(f"Error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def _validate_chapter_metadata(chapters):
+    """Validate EPUBWeave-specific per-chapter metadata from book.json."""
+    chapter_ids = set()
+    for index, chapter in enumerate(chapters, start=1):
+        if not isinstance(chapter, dict):
+            _build_error(f"chapter {index} in book.json must be an object")
+
+        if "file" not in chapter:
+            for field in ("spinner", "id", "toc"):
+                if field in chapter:
+                    _build_error(
+                        f"'{field}' is only allowed for chapters with a file "
+                        f"(chapter {index})"
+                    )
+            continue
+
+        spinner = chapter.get("spinner")
+        if not isinstance(spinner, str) or not spinner.strip():
+            _build_error(f"'spinner' missing or invalid for chapter {index}")
+
+        if "id" not in chapter:
+            continue
+        chapter_id = chapter["id"]
+        if type(chapter_id) is not int or chapter_id < 1:
+            _build_error(f"'id' must be a positive integer for chapter {index}")
+        if chapter_id in chapter_ids:
+            _build_error(f"duplicate chapter id '{chapter_id}' in book.json")
+        chapter_ids.add(chapter_id)
+
+
 def unpack_epub(input_path, output_dir):
     """Unpack an EPUBWeave-generated EPUB into its normalized book directory."""
     if not os.path.isfile(input_path):
@@ -301,10 +336,14 @@ def unpack_epub(input_path, output_dir):
             except (UnicodeDecodeError, json.JSONDecodeError):
                 _unpack_error("EPUBWeave metadata manifest is invalid")
 
-            if (
-                manifest.get("format") != "EPUBWeave"
-                or manifest.get("version") != EPUBWEAVE_FORMAT_VERSION
-            ):
+            if manifest.get("format") != "EPUBWeave":
+                _unpack_error("unsupported EPUBWeave metadata manifest version")
+            if manifest.get("version") == 1:
+                _unpack_error(
+                    "EPUBWeave metadata manifest version 1 is unsupported because "
+                    "it does not contain required episode spinner metadata"
+                )
+            if manifest.get("version") != EPUBWEAVE_FORMAT_VERSION:
                 _unpack_error("unsupported EPUBWeave metadata manifest version")
 
             metadata = manifest.get("metadata")
@@ -370,6 +409,7 @@ def unpack_epub(input_path, output_dir):
                     book_meta["cover"] = cover
 
                 chapter_number = 0
+                chapter_ids = set()
                 for chapter in chapters:
                     if not isinstance(chapter, dict):
                         _unpack_error("EPUBWeave metadata manifest has an invalid chapter")
@@ -378,8 +418,30 @@ def unpack_epub(input_path, output_dir):
                     if kind not in ("section", "chapter") or not isinstance(title, str) or not title:
                         _unpack_error("EPUBWeave metadata manifest has an invalid chapter")
                     if kind == "section":
+                        if "spinner" in chapter or "id" in chapter:
+                            _unpack_error(
+                                "EPUBWeave metadata manifest has episode metadata "
+                                "on a section"
+                            )
                         book_meta["chapters"].append({"title": title})
                         continue
+
+                    spinner = chapter.get("spinner")
+                    if not isinstance(spinner, str) or not spinner.strip():
+                        _unpack_error(
+                            "EPUBWeave metadata manifest has an invalid chapter spinner"
+                        )
+                    chapter_id = chapter.get("id")
+                    if "id" in chapter:
+                        if type(chapter_id) is not int or chapter_id < 1:
+                            _unpack_error(
+                                "EPUBWeave metadata manifest has an invalid chapter id"
+                            )
+                        if chapter_id in chapter_ids:
+                            _unpack_error(
+                                "EPUBWeave metadata manifest has duplicate chapter ids"
+                            )
+                        chapter_ids.add(chapter_id)
 
                     href = chapter.get("href")
                     if not isinstance(href, str) or not _safe_content_href(href):
@@ -394,7 +456,9 @@ def unpack_epub(input_path, output_dir):
                     filename = f"{chapter_number:04d}.body"
                     with open(os.path.join(chapters_dir, filename), "w", encoding="utf-8") as f:
                         f.write(body)
-                    entry = {"title": title, "file": filename}
+                    entry = {"title": title, "file": filename, "spinner": spinner}
+                    if "id" in chapter:
+                        entry["id"] = chapter_id
                     if chapter.get("toc") is False:
                         entry["toc"] = False
                     book_meta["chapters"].append(entry)
@@ -427,6 +491,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
         if key not in meta:
             print(f"Error: '{key}' missing in book.json", file=sys.stderr)
             sys.exit(1)
+    _validate_chapter_metadata(meta["chapters"])
 
     # Create book
     book = epub.EpubBook()
@@ -597,8 +662,11 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
             "kind": "chapter",
             "title": ch["title"],
             "href": chapter.file_name,
+            "spinner": ch["spinner"],
             "toc": ch.get("toc", True),
         })
+        if "id" in ch:
+            manifest_chapters[-1]["id"] = ch["id"]
 
         if ch.get("toc", True):
             if current_section is not None:

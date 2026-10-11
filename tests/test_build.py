@@ -11,7 +11,7 @@ import zipfile
 import pytest
 from PIL import Image
 
-from main import build_epub, unpack_epub
+from main import EPUBWEAVE_MANIFEST_PATH, build_epub, unpack_epub
 
 
 @pytest.fixture
@@ -49,9 +49,9 @@ def book_dir():
         "cover": "cover.jpg",
         "tags": ["소설", "테스트"],
         "chapters": [
-            {"title": "1장 시작", "file": "001.body"},
-            {"title": "2장 이미지", "file": "002.body"},
-            {"title": "3장 텍스트", "file": "003.txt"},
+            {"title": "1장 시작", "file": "001.body", "spinner": "naver", "id": 1},
+            {"title": "2장 이미지", "file": "002.body", "spinner": "munpia", "id": 2},
+            {"title": "3장 텍스트", "file": "003.txt", "spinner": "naver", "id": 3},
         ],
     }
     with open(os.path.join(d, "book.json"), "w", encoding="utf-8") as f:
@@ -130,6 +130,50 @@ class TestBuildEpub:
             assert "테스트 저자" in opf
             assert "소설" in opf
 
+    def test_manifest_preserves_spinner_and_id(self, book_dir, output_epub):
+        build_epub(book_dir, output_epub)
+        with zipfile.ZipFile(output_epub) as zf:
+            manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
+        assert manifest["version"] == 2
+        assert manifest["chapters"][0]["spinner"] == "naver"
+        assert manifest["chapters"][1]["spinner"] == "munpia"
+        assert manifest["chapters"][1]["id"] == 2
+
+    def test_id_is_optional(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        del meta["chapters"][0]["id"]
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        with zipfile.ZipFile(output_epub) as zf:
+            manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
+        assert "id" not in manifest["chapters"][0]
+
+    def test_rejects_missing_chapter_spinner(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        del meta["chapters"][0]["spinner"]
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        with pytest.raises(SystemExit):
+            build_epub(book_dir, output_epub)
+
+    def test_rejects_duplicate_chapter_id(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["chapters"][1]["id"] = 1
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        with pytest.raises(SystemExit):
+            build_epub(book_dir, output_epub)
+
     def test_compress_renames_png(self, book_dir, output_epub):
         build_epub(book_dir, output_epub, compress_images=True)
         with zipfile.ZipFile(output_epub) as zf:
@@ -167,10 +211,10 @@ class TestBuildEpubSections:
             "language": "ko",
             "chapters": [
                 {"title": "제1부"},
-                {"title": "1장", "file": "001.body"},
-                {"title": "2장", "file": "002.body"},
+                {"title": "1장", "file": "001.body", "spinner": "naver"},
+                {"title": "2장", "file": "002.body", "spinner": "naver"},
                 {"title": "제2부"},
-                {"title": "3장", "file": "003.txt"},
+                {"title": "3장", "file": "003.txt", "spinner": "naver"},
             ],
         }
         with open(os.path.join(book_dir, "book.json"), "w", encoding="utf-8") as f:
@@ -203,10 +247,10 @@ class TestUnpackEpub:
             meta = json.load(f)
         meta["chapters"] = [
             {"title": "제1부"},
-            {"title": "1장", "file": "001.body"},
-            {"title": "2장", "file": "002.body", "toc": False},
+            {"title": "1장", "file": "001.body", "spinner": "naver", "id": 1},
+            {"title": "2장", "file": "002.body", "spinner": "munpia", "id": 2, "toc": False},
             {"title": "제2부"},
-            {"title": "3장", "file": "003.txt"},
+            {"title": "3장", "file": "003.txt", "spinner": "naver", "id": 3},
         ]
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False)
@@ -219,10 +263,10 @@ class TestUnpackEpub:
             unpacked = json.load(f)
         assert unpacked["chapters"] == [
             {"title": "제1부"},
-            {"title": "1장", "file": "0001.body"},
-            {"title": "2장", "file": "0002.body", "toc": False},
+            {"title": "1장", "file": "0001.body", "spinner": "naver", "id": 1},
+            {"title": "2장", "file": "0002.body", "spinner": "munpia", "id": 2, "toc": False},
             {"title": "제2부"},
-            {"title": "3장", "file": "0003.body"},
+            {"title": "3장", "file": "0003.body", "spinner": "naver", "id": 3},
         ]
         assert os.path.exists(os.path.join(first_dir, "style.css"))
         assert open(os.path.join(first_dir, "images", "illust.png"), "rb").read() == open(
@@ -265,6 +309,22 @@ class TestUnpackEpub:
         with pytest.raises(SystemExit):
             unpack_epub(str(epub_path), str(tmp_path / "book"))
 
+    def test_rejects_version_one_manifest(self, book_dir, output_epub, tmp_path, capsys):
+        build_epub(book_dir, output_epub)
+        version_one_epub = tmp_path / "version-one.epub"
+        with zipfile.ZipFile(output_epub) as source:
+            manifest = json.loads(source.read(EPUBWEAVE_MANIFEST_PATH))
+            manifest["version"] = 1
+            with zipfile.ZipFile(version_one_epub, "w") as archive:
+                for item in source.infolist():
+                    if item.filename != EPUBWEAVE_MANIFEST_PATH:
+                        archive.writestr(item, source.read(item.filename))
+                archive.writestr(EPUBWEAVE_MANIFEST_PATH, json.dumps(manifest))
+
+        with pytest.raises(SystemExit):
+            unpack_epub(str(version_one_epub), str(tmp_path / "book"))
+        assert "does not contain required episode spinner metadata" in capsys.readouterr().err
+
 
 class TestBuildEpubEdgeCases:
     def test_no_cover(self, book_dir, output_epub):
@@ -305,7 +365,9 @@ class TestBuildEpubEdgeCases:
         meta_path = os.path.join(book_dir, "book.json")
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
-        meta["chapters"] = [{"title": "유일한 챕터", "file": "001.body"}]
+        meta["chapters"] = [
+            {"title": "유일한 챕터", "file": "001.body", "spinner": "naver"}
+        ]
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False)
 

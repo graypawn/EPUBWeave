@@ -1,4 +1,4 @@
-# EPUBWeave v2.0.0
+# EPUBWeave v3.0.0
 
 크롤러가 생성한 `book/` 디렉토리 구조를 EPUB 파일로 변환하는 빌더.
 EPUBWeave로 생성한 EPUB는 `--unpack`으로 다시 편집 가능한 `book/` 디렉터리로 풀 수 있습니다.
@@ -172,12 +172,12 @@ book/
   "cover": "cover.jpg",
   "tags": ["태그1", "태그2"],
   "chapters": [
-    {"title": "프롤로그", "file": "0001.body"},
+    {"title": "프롤로그", "file": "0001.body", "spinner": "naver", "id": 1},
     {"title": "제1부"},
-    {"title": "1장 시작", "file": "0002.body"},
-    {"title": "2장 전개", "file": "0003.body"},
+    {"title": "1장 시작", "file": "0002.body", "spinner": "naver", "id": 2},
+    {"title": "2장 전개", "file": "0003.body", "spinner": "munpia", "id": 3},
     {"title": "제2부"},
-    {"title": "3장 결말", "file": "0004.txt"}
+    {"title": "3장 결말", "file": "0004.txt", "spinner": "munpia", "id": 4}
   ]
 }
 ```
@@ -195,10 +195,15 @@ book/
 
 - **`file` 있음**: 챕터. `chapters/` 디렉토리 내의 파일을 참조
 - **`file` 없음**: TOC 섹션 헤더. 이후 챕터들이 해당 섹션 아래에 그룹핑됨
+- **`spinner`**: `file`이 있는 챕터에 필수. 본문을 마지막으로 생성하거나 전체 덮어쓴 스피너의 식별자
+- **`id`**: `file`이 있는 챕터에 권장. 책 안에서 중복되지 않는 양의 정수 에피소드 ID
 - **`toc: false`** (선택, 기본값 `true`): 챕터를 본문에는 포함하되 목차에서는 제외. `file`이 있는 챕터에만 적용됨
 
+일반적인 수동 본문 편집은 `spinner`를 변경하지 않습니다. `spinner`·`id`·`toc`는 섹션 헤더에 사용할 수 없습니다.
+EPUB 내부 메타데이터 포맷 v2는 이 정보를 보존하며, 스피너 정보가 없던 v1 EPUB은 `unpack`할 수 없습니다.
+
 ```json
-{"title": "후기", "file": "0099.body", "toc": false}
+{"title": "후기", "file": "0099.body", "spinner": "naver", "id": 99, "toc": false}
 ```
 
 ### 챕터 파일 형식
