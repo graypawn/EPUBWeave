@@ -45,7 +45,7 @@ MEDIA_TYPES = {
 }
 
 EPUBWEAVE_MANIFEST_PATH = "META-INF/epubweave.json"
-EPUBWEAVE_FORMAT_VERSION = 2
+EPUBWEAVE_FORMAT_VERSION = 3
 EPUB_CONTENT_ROOT = "EPUB"
 
 try:
@@ -258,14 +258,33 @@ def _safe_content_href(href):
     )
 
 
+def _is_valid_chapter_style_href(href):
+    """Return whether href is a flat CSS file in the book's styles/ directory."""
+    path = PurePosixPath(href)
+    return (
+        _safe_content_href(href)
+        and len(path.parts) == 2
+        and path.parts[0] == "styles"
+        and path.suffix == ".css"
+    )
+
+
 def _chapter_body_from_xhtml(xhtml, href):
     """Extract EPUBWeave's body fragment without retaining the XHTML wrapper."""
     match = re.search(r"<body(?:\s[^>]*)?>(.*?)</body\s*>", xhtml, re.IGNORECASE | re.DOTALL)
     if not match:
         raise ValueError(f"chapter '{href}' has no body element")
-    # EpubHtml adds outer formatting whitespace. Removing it prevents growth on
-    # every unpack → build cycle while leaving meaningful internal markup intact.
-    return match.group(1).strip()
+    body_content = match.group(1).strip()
+    # Strip the builder-added <article class="episode spinner-..."> wrapper
+    # to preserve the original body content for round-trip stability.
+    article_match = re.match(
+        r'<article\s+class="episode\s+spinner-[^"]*"\s*>(.*?)</article\s*>',
+        body_content,
+        re.IGNORECASE | re.DOTALL
+    )
+    if article_match:
+        body_content = article_match.group(1).strip()
+    return body_content
 
 
 def _unpacked_style_content(style_content):
@@ -296,7 +315,7 @@ def _validate_chapter_metadata(chapters):
             _build_error(f"chapter {index} in book.json must be an object")
 
         if "file" not in chapter:
-            for field in ("spinner", "id", "toc"):
+            for field in ("spinner", "id", "toc", "style"):
                 if field in chapter:
                     _build_error(
                         f"'{field}' is only allowed for chapters with a file "
@@ -309,13 +328,24 @@ def _validate_chapter_metadata(chapters):
             _build_error(f"'spinner' missing or invalid for chapter {index}")
 
         if "id" not in chapter:
-            continue
-        chapter_id = chapter["id"]
-        if type(chapter_id) is not int or chapter_id < 1:
-            _build_error(f"'id' must be a positive integer for chapter {index}")
-        if chapter_id in chapter_ids:
-            _build_error(f"duplicate chapter id '{chapter_id}' in book.json")
-        chapter_ids.add(chapter_id)
+            pass
+        else:
+            chapter_id = chapter["id"]
+            if type(chapter_id) is not int or chapter_id < 1:
+                _build_error(f"'id' must be a positive integer for chapter {index}")
+            if chapter_id in chapter_ids:
+                _build_error(f"duplicate chapter id '{chapter_id}' in book.json")
+            chapter_ids.add(chapter_id)
+
+        style = chapter.get("style")
+        if "style" in chapter:
+            if not isinstance(style, str) or not style.strip():
+                _build_error(f"'style' must be a non-empty string for chapter {index}")
+            if not _is_valid_chapter_style_href(style):
+                _build_error(
+                    f"'style' must be a single file under styles/ directory "
+                    f"(e.g. 'styles/0001.css') for chapter {index}"
+                )
 
 
 def unpack_epub(input_path, output_dir):
@@ -343,7 +373,8 @@ def unpack_epub(input_path, output_dir):
                     "EPUBWeave metadata manifest version 1 is unsupported because "
                     "it does not contain required episode spinner metadata"
                 )
-            if manifest.get("version") != EPUBWEAVE_FORMAT_VERSION:
+            manifest_version = manifest.get("version")
+            if manifest_version not in (2, 3):
                 _unpack_error("unsupported EPUBWeave metadata manifest version")
 
             metadata = manifest.get("metadata")
@@ -378,6 +409,7 @@ def unpack_epub(input_path, output_dir):
                 images_dir = os.path.join(temp_dir, "images")
                 os.makedirs(chapters_dir)
                 os.makedirs(images_dir)
+                extracted_style_hrefs = set()
 
                 try:
                     style_content = _read_package_file(archive, style_href).decode("utf-8")
@@ -418,7 +450,7 @@ def unpack_epub(input_path, output_dir):
                     if kind not in ("section", "chapter") or not isinstance(title, str) or not title:
                         _unpack_error("EPUBWeave metadata manifest has an invalid chapter")
                     if kind == "section":
-                        if "spinner" in chapter or "id" in chapter:
+                        if "spinner" in chapter or "id" in chapter or "style" in chapter:
                             _unpack_error(
                                 "EPUBWeave metadata manifest has episode metadata "
                                 "on a section"
@@ -461,6 +493,29 @@ def unpack_epub(input_path, output_dir):
                         entry["id"] = chapter_id
                     if chapter.get("toc") is False:
                         entry["toc"] = False
+
+                    # Per-chapter style (v3+)
+                    if "style" in chapter:
+                        style_href = chapter["style"]
+                        if (
+                            not isinstance(style_href, str)
+                            or not _is_valid_chapter_style_href(style_href)
+                        ):
+                            _unpack_error("EPUBWeave metadata manifest has an invalid chapter style path")
+                        if style_href not in extracted_style_hrefs:
+                            try:
+                                style_content = _read_package_file(archive, style_href).decode("utf-8")
+                            except (KeyError, UnicodeDecodeError):
+                                _unpack_error(f"could not extract chapter stylesheet '{style_href}'")
+                            styles_dir = os.path.join(temp_dir, "styles")
+                            os.makedirs(styles_dir, exist_ok=True)
+                            with open(
+                                os.path.join(temp_dir, style_href), "w", encoding="utf-8"
+                            ) as f:
+                                f.write(style_content)
+                            extracted_style_hrefs.add(style_href)
+                        entry["style"] = style_href
+
                     book_meta["chapters"].append(entry)
 
                 with open(os.path.join(temp_dir, "book.json"), "w", encoding="utf-8") as f:
@@ -605,6 +660,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
     chapter_items = []   # all EpubHtml items (for spine)
     toc_entries = []     # TOC: EpubHtml or (Section, [EpubHtml, ...])
     manifest_chapters = []
+    chapter_css_items = {}  # styles/foo.css -> EpubItem, shared across chapters
     chap_index = 0
 
     section_index = 0
@@ -649,6 +705,10 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
         body_content = rewrite_image_src(body_content)
         body_content = _apply_img_renames(body_content, img_rename_map)
 
+        # Wrap with spinner class for per-spinner styling
+        spinner_class = ch["spinner"].strip()
+        body_content = f'<article class="episode spinner-{spinner_class}">\n{body_content}\n</article>'
+
         chapter = epub.EpubHtml(
             title=ch["title"],
             file_name=f"chapter_{chap_index:04d}.xhtml",
@@ -656,17 +716,44 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
         )
         chapter.set_content(body_content)
         chapter.add_item(css_item)
+
+        # Per-chapter stylesheet. A stylesheet can be referenced by any number
+        # of chapters, so add each source file to the EPUB only once.
+        chapter_css_item = None
+        if "style" in ch:
+            style_href = ch["style"]
+            chapter_css_item = chapter_css_items.get(style_href)
+            if chapter_css_item is None:
+                style_path = os.path.join(input_dir, style_href)
+                if not os.path.isfile(style_path):
+                    print(f"Error: chapter style file '{style_path}' not found", file=sys.stderr)
+                    sys.exit(1)
+                with open(style_path, "r", encoding="utf-8") as f:
+                    chapter_css_content = f.read()
+                chapter_css_item = epub.EpubItem(
+                    uid=f"chapter_css_{len(chapter_css_items) + 1:04d}",
+                    file_name=style_href,
+                    media_type="text/css",
+                    content=chapter_css_content.encode("utf-8"),
+                )
+                chapter_css_items[style_href] = chapter_css_item
+                book.add_item(chapter_css_item)
+            chapter.add_item(chapter_css_item)
+
         book.add_item(chapter)
         chapter_items.append(chapter)
-        manifest_chapters.append({
+        manifest_entry = {
             "kind": "chapter",
             "title": ch["title"],
             "href": chapter.file_name,
             "spinner": ch["spinner"],
             "toc": ch.get("toc", True),
-        })
+        }
         if "id" in ch:
-            manifest_chapters[-1]["id"] = ch["id"]
+            manifest_entry["id"] = ch["id"]
+        if chapter_css_item is not None:
+            manifest_entry["style"] = chapter_css_item.file_name
+        manifest_chapters.append(manifest_entry)
 
         if ch.get("toc", True):
             if current_section is not None:

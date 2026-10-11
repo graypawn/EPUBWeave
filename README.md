@@ -151,6 +151,10 @@ epubweave --input book --output result.epub --compress --max-size default
 book/
 ├── book.json
 ├── style.css          (선택)
+├── styles/            (선택, 챕터별로 참조하는 스타일시트)
+│   ├── naver.css
+│   ├── munpia.css
+│   └── ...
 ├── chapters/
 │   ├── 0001.body
 │   ├── 0002.body
@@ -172,12 +176,12 @@ book/
   "cover": "cover.jpg",
   "tags": ["태그1", "태그2"],
   "chapters": [
-    {"title": "프롤로그", "file": "0001.body", "spinner": "naver", "id": 1},
+    {"title": "프롤로그", "file": "0001.body", "spinner": "naver", "id": 1, "style": "styles/naver.css"},
     {"title": "제1부"},
-    {"title": "1장 시작", "file": "0002.body", "spinner": "naver", "id": 2},
-    {"title": "2장 전개", "file": "0003.body", "spinner": "munpia", "id": 3},
+    {"title": "1장 시작", "file": "0002.body", "spinner": "naver", "id": 2, "style": "styles/naver.css"},
+    {"title": "2장 전개", "file": "0003.body", "spinner": "munpia", "id": 3, "style": "styles/munpia.css"},
     {"title": "제2부"},
-    {"title": "3장 결말", "file": "0004.txt", "spinner": "munpia", "id": 4}
+    {"title": "3장 결말", "file": "0004.txt", "spinner": "munpia", "id": 4, "style": "styles/munpia.css"}
   ]
 }
 ```
@@ -198,9 +202,10 @@ book/
 - **`spinner`**: `file`이 있는 챕터에 필수. 본문을 마지막으로 생성하거나 전체 덮어쓴 스피너의 식별자
 - **`id`**: `file`이 있는 챕터에 권장. 책 안에서 중복되지 않는 양의 정수 에피소드 ID
 - **`toc: false`** (선택, 기본값 `true`): 챕터를 본문에는 포함하되 목차에서는 제외. `file`이 있는 챕터에만 적용됨
+- **`style`** (선택, v3.0+): 이 챕터에 적용할 `styles/` 하위 CSS 파일 경로. 여러 챕터가 같은 파일을 참조할 수 있음
 
-일반적인 수동 본문 편집은 `spinner`를 변경하지 않습니다. `spinner`·`id`·`toc`는 섹션 헤더에 사용할 수 없습니다.
-EPUB 내부 메타데이터 포맷 v2는 이 정보를 보존하며, 스피너 정보가 없던 v1 EPUB은 `unpack`할 수 없습니다.
+일반적인 수동 본문 편집은 `spinner`를 변경하지 않습니다. `spinner`·`id`·`toc`·`style`은 섹션 헤더에 사용할 수 없습니다.
+EPUB 내부 메타데이터 포맷 v2 이상은 이 정보를 보존하며, 스피너 정보가 없던 v1 EPUB은 `unpack`할 수 없습니다.
 
 ```json
 {"title": "후기", "file": "0099.body", "spinner": "naver", "id": 99, "toc": false}
@@ -256,10 +261,59 @@ HTML fragment. `<html>`, `<body>` 태그 없이 본문 내용만 포함:
 커스텀 스타일을 완전히 처음부터 작성하려면 `style.css`만 정의하면 됨.
 기본 스타일을 유지하면서 일부만 수정하려면 `static/fallback.css`의 내용을 `style.css`에 복사한 뒤 수정.
 
+### 챕터별 스타일시트 (선택, v3.0+)
+
+`book.json`의 챕터 항목에 `style`을 지정하면 해당 챕터에 CSS를 추가 적용합니다. 주 사용례는 스피너별 CSS를 재사용하는 것입니다.
+
+```text
+styles/
+├── naver.css
+└── munpia.css
+```
+
+```json
+{
+  "chapters": [
+    {"title": "1화", "file": "0001.body", "spinner": "naver", "style": "styles/naver.css"},
+    {"title": "2화", "file": "0002.body", "spinner": "munpia", "style": "styles/munpia.css"},
+    {"title": "3화", "file": "0003.body", "spinner": "naver", "style": "styles/naver.css"}
+  ]
+}
+```
+
+- 공통 `style.css`(또는 기본 스타일)가 먼저 적용되고, 지정한 스타일시트가 그 위에 덮어씌워짐
+- 동일한 스타일시트는 여러 챕터가 참조할 수 있으며 EPUB에는 한 번만 포함됨
+- `style`을 생략한 챕터는 공통 스타일만 적용됨
+- 특정 에피소드만 다르게 꾸밀 때는 `styles/special-episode.css`처럼 전용 파일을 지정할 수 있음
+- 스타일시트는 `styles/` 바로 아래의 `.css` 파일이어야 함
+- `styles/` 디렉터리는 스타일시트를 쓰는 EPUB을 언팩할 때만 생성됨
+
+각 챕터 본문은 스피너 기반 클래스 래퍼로 감싸져 생성됩니다:
+
+```html
+<article class="episode spinner-naver">
+  <!-- 챕터 본문 -->
+</article>
+```
+
+이를 이용해 공통 `style.css`에서 스피너별 공통 스타일을 정의할 수도 있습니다:
+
+```css
+.spinner-naver .dialogue { color: blue; }
+.spinner-munpia .dialogue { color: red; }
+```
+
+## v3.0 변경 사항
+
+- **챕터별 스타일시트 지원**: `book.json` 챕터 항목이 스피너별 또는 에피소드 전용 CSS를 참조 가능
+- **스피너 클래스 래퍼**: 각 챕터 본문이 `<article class="episode spinner-{spinner}">`로 감싸져 생성
+- **EPUBWeave 매니페스트 v3**: 챕터별 CSS 정보 보존, v2 EPUB도 언팩 가능
+- **`styles/` 디렉터리**: 재사용 가능한 챕터 스타일시트 저장용 디렉터리 추가
+- **왕복 안정성 유지**: `unpack → build → unpack` 반복 시 챕터별 CSS도 바이트 동일성 보장
+
 ## v2.0 변경 사항
 
 - **`--unpack` 명령 추가**: EPUBWeave 생성 EPUB를 정규화된 `book/` 디렉터리로 역변환
-- **왕복 안정성 보장**: `unpack → build → unpack` 반복 시 CSS·본문·이미지 바이트 동일성 유지
 - **이미지 재처리 방지**: 언팩 후 옵션 없는 빌드는 이미지 최적화를 재적용하지 않음
 - **CSS 정규화**: 내장 기본 스타일이 매번 중복되지 않고 한 번만 적용되도록 보정
 - **CLI 인자 변경**: `--input`/`--output`은 빌드·언팩 공용, `--unpack` 플래그로 모드 전환

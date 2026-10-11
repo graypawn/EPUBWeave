@@ -66,6 +66,12 @@
             "type": "integer",
             "description": "Optional unique positive integer episode identifier",
             "minimum": 1
+          },
+          "style": {
+            "type": "string",
+            "description": "Optional reusable stylesheet under styles/ directory (e.g., 'styles/naver.css')",
+            "pattern": "^styles/[^/]+\\.css$",
+            "minLength": 1
           }
         },
         "additionalProperties": false,
@@ -81,7 +87,8 @@
                 {"required": ["file"]},
                 {"required": ["toc"]},
                 {"required": ["spinner"]},
-                {"required": ["id"]}
+                {"required": ["id"]},
+                {"required": ["style"]}
               ]
             },
             "description": "Section header (no file)"

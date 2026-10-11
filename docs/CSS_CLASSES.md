@@ -2,6 +2,24 @@
 
 `static/fallback.css`에서 제공하는 클래스 목록 (사용자가 `style.css`를 따로 지정하지 않은 경우 적용되는 기본 스타일). 크롤러/변환기가 HTML을 생성할 때 참조.
 
+## 빌더가 자동 추가하는 래퍼 클래스 (v3+)
+
+| Class | 용도 | 적용 위치 |
+|-------|------|-----------|
+| `.episode` | 모든 챕터 본문의 공통 래퍼 | `<article class="episode spinner-naver">` |
+| `.spinner-{spinner}` | 스피너별 식별 클래스 | `<article class="episode spinner-naver">` |
+
+스피너 이름이 `naver`, `munpia`, `textspinner` 등일 때 각각 `.spinner-naver`, `.spinner-munpia`, `.spinner-textspinner`가 추가됩니다.
+이를 이용해 공통 `style.css`에서 스피너별 공통 스타일을 정의할 수 있습니다:
+
+```css
+/* 네이버 스피너 본문 */
+.spinner-naver .dialogue { color: blue; }
+
+/* 문피아 스피너 본문 */
+.spinner-munpia .dialogue { color: red; }
+```
+
 ## 구조 클래스
 
 | Class | 용도 | 사용 예시 |

@@ -134,10 +134,38 @@ class TestBuildEpub:
         build_epub(book_dir, output_epub)
         with zipfile.ZipFile(output_epub) as zf:
             manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
-        assert manifest["version"] == 2
+        assert manifest["version"] == 3
         assert manifest["chapters"][0]["spinner"] == "naver"
         assert manifest["chapters"][1]["spinner"] == "munpia"
         assert manifest["chapters"][1]["id"] == 2
+
+    def test_reuses_stylesheet_across_chapters(self, book_dir, output_epub):
+        styles_dir = os.path.join(book_dir, "styles")
+        os.makedirs(styles_dir)
+        with open(os.path.join(styles_dir, "naver.css"), "w", encoding="utf-8") as f:
+            f.write("p { color: blue; }\n")
+        with open(os.path.join(styles_dir, "munpia.css"), "w", encoding="utf-8") as f:
+            f.write("p { color: red; }\n")
+
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["chapters"][0]["style"] = "styles/naver.css"
+        meta["chapters"][1]["style"] = "styles/munpia.css"
+        meta["chapters"][2]["style"] = "styles/naver.css"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        with zipfile.ZipFile(output_epub) as zf:
+            assert zf.namelist().count("EPUB/styles/naver.css") == 1
+            assert zf.namelist().count("EPUB/styles/munpia.css") == 1
+            manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
+        assert [chapter.get("style") for chapter in manifest["chapters"]] == [
+            "styles/naver.css",
+            "styles/munpia.css",
+            "styles/naver.css",
+        ]
 
     def test_id_is_optional(self, book_dir, output_epub):
         meta_path = os.path.join(book_dir, "book.json")
@@ -281,6 +309,40 @@ class TestUnpackEpub:
 
         shutil.rmtree(first_dir)
         shutil.rmtree(second_dir)
+        os.unlink(rebuilt_epub)
+
+    def test_unpacks_shared_stylesheet_references(self, book_dir, output_epub):
+        styles_dir = os.path.join(book_dir, "styles")
+        os.makedirs(styles_dir)
+        naver_css = "p { color: blue; }\n"
+        with open(os.path.join(styles_dir, "naver.css"), "w", encoding="utf-8") as f:
+            f.write(naver_css)
+
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["chapters"][0]["style"] = "styles/naver.css"
+        meta["chapters"][2]["style"] = "styles/naver.css"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        unpacked_dir = self._unpack_path()
+        unpack_epub(output_epub, unpacked_dir)
+
+        with open(os.path.join(unpacked_dir, "book.json"), encoding="utf-8") as f:
+            unpacked = json.load(f)
+        assert unpacked["chapters"][0]["style"] == "styles/naver.css"
+        assert unpacked["chapters"][2]["style"] == "styles/naver.css"
+        with open(os.path.join(unpacked_dir, "styles", "naver.css"), encoding="utf-8") as f:
+            assert f.read() == naver_css
+
+        rebuilt_epub = output_epub + ".rebuilt.epub"
+        build_epub(unpacked_dir, rebuilt_epub)
+        with zipfile.ZipFile(rebuilt_epub) as zf:
+            assert zf.namelist().count("EPUB/styles/naver.css") == 1
+
+        shutil.rmtree(unpacked_dir)
         os.unlink(rebuilt_epub)
 
     def test_optimized_images_are_not_reprocessed_on_default_rebuild(self, book_dir, output_epub):
