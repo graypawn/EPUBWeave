@@ -1,4 +1,4 @@
-# EPUBWeave v3.0.0
+# EPUBWeave v3.1.0
 
 크롤러가 생성한 `book/` 디렉토리 구조를 EPUB 파일로 변환하는 빌더.
 EPUBWeave로 생성한 EPUB는 `--unpack`으로 다시 편집 가능한 `book/` 디렉터리로 풀 수 있습니다.
