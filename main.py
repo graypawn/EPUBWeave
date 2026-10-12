@@ -2,7 +2,6 @@
 """EPUB Builder — converts a structured book directory into an EPUB file."""
 
 import argparse
-import importlib.metadata
 import json
 import os
 import re
@@ -44,14 +43,11 @@ MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
+PACKAGE_VERSION = "3.1.0"
 EPUBWEAVE_MANIFEST_PATH = "META-INF/epubweave.json"
-EPUBWEAVE_FORMAT_VERSION = 3
+EPUBWEAVE_FORMAT_VERSION = int(PACKAGE_VERSION.split(".")[0])
 EPUB_CONTENT_ROOT = "EPUB"
-
-try:
-    __version__ = importlib.metadata.version("epubweave")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "3.1.0"
+__version__ = PACKAGE_VERSION
 
 
 def _svg_cover_html(cover_filename, width, height):

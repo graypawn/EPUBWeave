@@ -2,6 +2,12 @@
 
 For AI integration: crrawlers, orchestration UIs, and automation tools.
 
+## Version Policy
+
+- Officially supported releases are v3.1.0 and later.
+- The package version uses `MAJOR.MINOR.PATCH`; the EPUBWeave manifest format version always equals `MAJOR`.
+- This release writes manifest version 3. It retains read compatibility with version 2 manifests for `--unpack`; that compatibility does not restore support for legacy releases.
+
 ## Command Format
 
 ```bash

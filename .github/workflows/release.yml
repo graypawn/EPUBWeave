@@ -71,6 +71,32 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release tag matches package version
+        run: |
+          package_version="$(python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          tree = ast.parse(Path("main.py").read_text(encoding="utf-8"))
+          for node in tree.body:
+              if (
+                  isinstance(node, ast.Assign)
+                  and len(node.targets) == 1
+                  and isinstance(node.targets[0], ast.Name)
+                  and node.targets[0].id == "PACKAGE_VERSION"
+                  and isinstance(node.value, ast.Constant)
+                  and isinstance(node.value.value, str)
+              ):
+                  print(node.value.value)
+                  break
+          else:
+              raise SystemExit("PACKAGE_VERSION must be a string constant in main.py")
+          PY
+          )"
+          test "v${package_version}" = "$GITHUB_REF_NAME"
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:

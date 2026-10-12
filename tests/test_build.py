@@ -11,7 +11,17 @@ import zipfile
 import pytest
 from PIL import Image
 
-from main import EPUBWEAVE_MANIFEST_PATH, build_epub, unpack_epub
+from main import (
+    EPUBWEAVE_FORMAT_VERSION,
+    EPUBWEAVE_MANIFEST_PATH,
+    __version__,
+    build_epub,
+    unpack_epub,
+)
+
+
+def test_package_major_matches_manifest_format_version():
+    assert EPUBWEAVE_FORMAT_VERSION == int(__version__.split(".")[0])
 
 
 @pytest.fixture
@@ -134,7 +144,7 @@ class TestBuildEpub:
         build_epub(book_dir, output_epub)
         with zipfile.ZipFile(output_epub) as zf:
             manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
-        assert manifest["version"] == 3
+        assert manifest["version"] == EPUBWEAVE_FORMAT_VERSION
         assert manifest["chapters"][0]["spinner"] == "naver"
         assert manifest["chapters"][1]["spinner"] == "munpia"
         assert manifest["chapters"][1]["id"] == 2
