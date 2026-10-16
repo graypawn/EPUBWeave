@@ -1,4 +1,4 @@
-# EPUBWeave v3.1.0
+# EPUBWeave v4.0.0
 
 크롤러가 생성한 `book/` 디렉토리 구조를 EPUB 파일로 변환하는 빌더.
 EPUBWeave로 생성한 EPUB는 `--unpack`으로 다시 편집 가능한 `book/` 디렉터리로 풀 수 있습니다.
@@ -6,8 +6,8 @@ EPUBWeave로 생성한 EPUB는 `--unpack`으로 다시 편집 가능한 `book/` 
 ## 지원 및 버전 정책
 
 - 공식 배포·지원 버전은 **v3.1.0 이상**입니다. 이전 릴리스는 더 이상 배포하거나 지원하지 않습니다.
-- 패키지 버전은 `MAJOR.MINOR.PATCH` 형식이며, EPUB 내부 매니페스트 명세 버전은 항상 패키지의 `MAJOR`와 같습니다. 예를 들어 패키지 v3.1.0은 명세 v3을 생성합니다.
-- 현재 버전은 기존 사용자 EPUB의 읽기 호환성을 위해 명세 v2도 `--unpack`할 수 있습니다. 이는 v2 릴리스를 지원하거나 재배포한다는 의미는 아닙니다.
+- 패키지 버전은 `MAJOR.MINOR.PATCH` 형식이며, EPUB 내부 매니페스트 명세 버전은 항상 패키지의 `MAJOR`와 같습니다. 예를 들어 패키지 v4.0.0은 명세 v4를 생성합니다.
+- 현재 버전은 기존 사용자 EPUB의 읽기 호환성을 위해 명세 v2·v3도 `--unpack`할 수 있습니다. 이는 이전 릴리스를 지원하거나 재배포한다는 의미는 아닙니다.
 
 ## 설치 (권장)
 
@@ -181,6 +181,10 @@ book/
   "language": "ko",
   "cover": "cover.jpg",
   "tags": ["태그1", "태그2"],
+  "sourceUrls": {
+    "naver": "https://series.naver.com/novel/detail.series?productNo=12345",
+    "munpia": "https://novel.munpia.com/67890"
+  },
   "chapters": [
     {"title": "프롤로그", "file": "0001.body", "spinner": "naver", "id": 1, "style": "styles/naver.css"},
     {"title": "제1부"},
@@ -200,6 +204,7 @@ book/
 | `chapters` | O | 챕터 목록 |
 | `cover` | X | 커버 이미지 파일명 (`images/` 내) |
 | `tags` | X | 태그 목록 (EPUB 메타데이터 subject) |
+| `sourceUrls` | X | 스피너 식별자별 작품 URL 맵. 이어하기에 사용하며, 임의 개수의 스피너를 지정할 수 있음 |
 
 ### chapters 항목
 
@@ -212,6 +217,25 @@ book/
 
 일반적인 수동 본문 편집은 `spinner`를 변경하지 않습니다. `spinner`·`id`·`toc`·`style`은 섹션 헤더에 사용할 수 없습니다.
 EPUB 내부 메타데이터 포맷 v2 이상은 이 정보를 보존하며, 스피너 정보가 없던 v1 EPUB은 `unpack`할 수 없습니다.
+
+### 작품 URL (`sourceUrls`, 선택, 명세 v4+)
+
+`sourceUrls`는 이어하기에 필요한 플랫폼별 작품 URL을 스피너 식별자별로 기록합니다. 특정
+스피너의 URL이 없으면 해당 스피너는 수동 입력이나 검색처럼 자체 대체 방법을 사용할 수 있습니다.
+
+```json
+{
+  "sourceUrls": {
+    "naver": "https://series.naver.com/novel/detail.series?productNo=12345",
+    "munpia": "https://novel.munpia.com/67890",
+    "custom-spinner": "https://example.com/work/42"
+  }
+}
+```
+
+- 키는 비어 있지 않은 스피너 식별자, 값은 비어 있지 않은 URL 문자열이어야 함
+- 빌더는 스피너 이름이나 개수를 제한하지 않음
+- `unpack`은 지정된 맵을 그대로 복원함
 
 ```json
 {"title": "후기", "file": "0099.body", "spinner": "naver", "id": 99, "toc": false}
@@ -308,6 +332,10 @@ styles/
 .spinner-naver .dialogue { color: blue; }
 .spinner-munpia .dialogue { color: red; }
 ```
+
+## 명세 v4 변경 사항
+
+- **EPUBWeave 매니페스트 v4**: 스피너별 작품 URL 맵 `sourceUrls` 보존, v2·v3 EPUB도 언팩 가능
 
 ## 명세 v3 변경 사항
 

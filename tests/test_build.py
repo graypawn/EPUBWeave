@@ -149,6 +149,24 @@ class TestBuildEpub:
         assert manifest["chapters"][1]["spinner"] == "munpia"
         assert manifest["chapters"][1]["id"] == 2
 
+    def test_manifest_preserves_source_urls(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        source_urls = {
+            "naver": "https://series.naver.com/novel/detail.series?productNo=12345",
+            "munpia": "https://novel.munpia.com/67890",
+            "custom-spinner": "https://example.com/work/42",
+        }
+        meta["sourceUrls"] = source_urls
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        with zipfile.ZipFile(output_epub) as zf:
+            manifest = json.loads(zf.read(EPUBWEAVE_MANIFEST_PATH))
+        assert manifest["metadata"]["sourceUrls"] == source_urls
+
     def test_reuses_stylesheet_across_chapters(self, book_dir, output_epub):
         styles_dir = os.path.join(book_dir, "styles")
         os.makedirs(styles_dir)
@@ -355,6 +373,28 @@ class TestUnpackEpub:
         shutil.rmtree(unpacked_dir)
         os.unlink(rebuilt_epub)
 
+    def test_unpacks_source_urls(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        source_urls = {
+            "naver": "https://series.naver.com/novel/detail.series?productNo=12345",
+            "munpia": "https://novel.munpia.com/67890",
+        }
+        meta["sourceUrls"] = source_urls
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        build_epub(book_dir, output_epub)
+        unpacked_dir = self._unpack_path()
+        unpack_epub(output_epub, unpacked_dir)
+
+        with open(os.path.join(unpacked_dir, "book.json"), encoding="utf-8") as f:
+            unpacked = json.load(f)
+        assert unpacked["sourceUrls"] == source_urls
+
+        shutil.rmtree(unpacked_dir)
+
     def test_optimized_images_are_not_reprocessed_on_default_rebuild(self, book_dir, output_epub):
         build_epub(book_dir, output_epub, compress_images=True)
         first_dir = self._unpack_path()
@@ -397,6 +437,28 @@ class TestUnpackEpub:
             unpack_epub(str(version_one_epub), str(tmp_path / "book"))
         assert "does not contain required episode spinner metadata" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("manifest_version", (2, 3))
+    def test_unpacks_prior_manifest_without_source_urls(
+        self, book_dir, output_epub, tmp_path, manifest_version
+    ):
+        build_epub(book_dir, output_epub)
+        prior_epub = tmp_path / f"version-{manifest_version}.epub"
+        with zipfile.ZipFile(output_epub) as source:
+            manifest = json.loads(source.read(EPUBWEAVE_MANIFEST_PATH))
+            manifest["version"] = manifest_version
+            manifest["metadata"].pop("sourceUrls", None)
+            with zipfile.ZipFile(prior_epub, "w") as archive:
+                for item in source.infolist():
+                    if item.filename != EPUBWEAVE_MANIFEST_PATH:
+                        archive.writestr(item, source.read(item.filename))
+                archive.writestr(EPUBWEAVE_MANIFEST_PATH, json.dumps(manifest))
+
+        unpacked_dir = tmp_path / f"unpacked-v{manifest_version}"
+        unpack_epub(str(prior_epub), str(unpacked_dir))
+        with open(unpacked_dir / "book.json", encoding="utf-8") as f:
+            unpacked = json.load(f)
+        assert "sourceUrls" not in unpacked
+
 
 class TestBuildEpubEdgeCases:
     def test_no_cover(self, book_dir, output_epub):
@@ -432,6 +494,17 @@ class TestBuildEpubEdgeCases:
 
         build_epub(book_dir, output_epub)
         assert os.path.exists(output_epub)
+
+    def test_rejects_invalid_source_urls(self, book_dir, output_epub):
+        meta_path = os.path.join(book_dir, "book.json")
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["sourceUrls"] = {"naver": ""}
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+        with pytest.raises(SystemExit):
+            build_epub(book_dir, output_epub)
 
     def test_single_chapter(self, book_dir, output_epub):
         meta_path = os.path.join(book_dir, "book.json")

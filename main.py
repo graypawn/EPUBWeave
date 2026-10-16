@@ -43,7 +43,7 @@ MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
-PACKAGE_VERSION = "3.1.0"
+PACKAGE_VERSION = "4.0.0"
 EPUBWEAVE_MANIFEST_PATH = "META-INF/epubweave.json"
 EPUBWEAVE_FORMAT_VERSION = int(PACKAGE_VERSION.split(".")[0])
 EPUB_CONTENT_ROOT = "EPUB"
@@ -344,6 +344,20 @@ def _validate_chapter_metadata(chapters):
                 )
 
 
+def _valid_source_urls(source_urls):
+    """Return whether sourceUrls maps non-empty spinner names to URL strings."""
+    return (
+        isinstance(source_urls, dict)
+        and all(
+            isinstance(spinner, str)
+            and spinner.strip()
+            and isinstance(source_url, str)
+            and source_url.strip()
+            for spinner, source_url in source_urls.items()
+        )
+    )
+
+
 def unpack_epub(input_path, output_dir):
     """Unpack an EPUBWeave-generated EPUB into its normalized book directory."""
     if not os.path.isfile(input_path):
@@ -370,7 +384,7 @@ def unpack_epub(input_path, output_dir):
                     "it does not contain required episode spinner metadata"
                 )
             manifest_version = manifest.get("version")
-            if manifest_version not in (2, 3):
+            if manifest_version not in (2, 3, 4):
                 _unpack_error("unsupported EPUBWeave metadata manifest version")
 
             metadata = manifest.get("metadata")
@@ -392,6 +406,8 @@ def unpack_epub(input_path, output_dir):
             tags = metadata.get("tags", [])
             if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                 _unpack_error("EPUBWeave metadata manifest has invalid tags")
+            if "sourceUrls" in metadata and not _valid_source_urls(metadata["sourceUrls"]):
+                _unpack_error("EPUBWeave metadata manifest has invalid source URLs")
 
             for image_name in images:
                 if not isinstance(image_name, str) or not _safe_image_name(image_name):
@@ -430,6 +446,8 @@ def unpack_epub(input_path, output_dir):
                 }
                 if tags:
                     book_meta["tags"] = tags
+                if "sourceUrls" in metadata:
+                    book_meta["sourceUrls"] = metadata["sourceUrls"]
                 cover = manifest.get("cover")
                 if cover is not None:
                     if not isinstance(cover, str) or not _safe_image_name(cover) or cover not in images:
@@ -543,6 +561,8 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
             print(f"Error: '{key}' missing in book.json", file=sys.stderr)
             sys.exit(1)
     _validate_chapter_metadata(meta["chapters"])
+    if "sourceUrls" in meta and not _valid_source_urls(meta["sourceUrls"]):
+        _build_error("'sourceUrls' must map non-empty spinner names to non-empty URL strings")
 
     # Create book
     book = epub.EpubBook()
@@ -779,6 +799,7 @@ def build_epub(input_dir, output_path, compress_images=False, max_image_size=Non
             "author": meta["author"],
             "language": meta["language"],
             "tags": [tag.strip() for tag in meta.get("tags", [])],
+            **({"sourceUrls": meta["sourceUrls"]} if "sourceUrls" in meta else {}),
         },
         "style": css_item.file_name,
         "cover": cover_filename,

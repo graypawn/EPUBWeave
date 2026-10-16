@@ -34,6 +34,18 @@
         "minLength": 1
       }
     },
+    "sourceUrls": {
+      "type": "object",
+      "description": "Optional work URLs keyed by spinner identifier, used to resume collection",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "chapters": {
       "type": "array",
       "description": "Chapters and section headers",
